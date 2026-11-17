@@ -152,15 +152,18 @@ This ties everything together. Three statements, each building on the last:
 3. **`TxInput::verify` → `TxOutput`**: plus "this transaction is in that block". **`TxInclusion`** is the efficient part. It needs:
    - every FEC root (32 bytes each), which rebuilds the block_id;
    - only the shreds of the one component holding the transaction, each proven against its FEC root;
-   - the single shred before them, flagged DATA_COMPLETE, so the run starts at a real boundary and can't be read "out of frame".
+   - the single shred before them, flagged DATA_COMPLETE, so the run starts at a real boundary and can't be read "out of frame";
+   - the transaction's **Ed25519 signatures**, checked strictly as Agave's sigverify does (`Transaction::verify_signatures` in `tx.rs`). Replay isn't a safe stand-in: the part of a block before an UpdateParent marker is never replayed, yet it is covered by the block_id.
 
    `from_block` builds the smallest such inclusion from a full block.
 
+   **Ancestry (`verify_ancestry`, `AncestryLink`).** A footer certifies only the newest block that was final, so a block can be skipped over and never get a certificate of its own (about one in four on devnet). It is still final, because a descendant is. `TxInput.ancestry` lists, nearest first, one link per block from the certified block D down to the block holding the transaction. Each link is that block's FEC roots plus the parent its block_id names; rebuilding the block_id from them proves the parent, with no shred. The walk must go strictly down in slot and stay within `MAX_ANCESTRY` (64) blocks. `TxOutput` then carries both blocks: D (`finality`) and the transaction's (`tx_slot`, `tx_block_id`).
+
 Also here:
 - **`validator_set_hash`**: the commitment (item 1.1), `sha256("huginn-validator-set-v1" | count | pubkey,stake …)` in rank order.
-- **`TxOutput::encode`**: the public values as a **fixed big-endian byte layout**, with offsets documented on the function. Any chain can slice it. Provisional until item 4.1.
+- **`TxOutput::encode`**: the public values as a **fixed big-endian byte layout** (version 2: a header naming both blocks, then tagged claims; today one claim, the transaction), with offsets documented on the function. Any chain can slice it.
 
-*Tests:* `tests/proof.rs` (18 tests; section 9 lists what they cover).
+*Tests:* `tests/proof.rs` (18 tests; section 9 lists what they cover), `tests/ancestry.rs` (12 tests, including the real devnet slot 522,347,550 that no footer ever certified), `tests/tx_signatures.rs` (6 tests: a changed or made-up signature, another message, another key and an off-curve key are all refused).
 
 ### `src/fixture.rs` (feature `fixture`, host only)
 Builds inputs for tests and the SP1 runner:
@@ -216,6 +219,8 @@ trait ShredSource {
 }
 ```
 
+When no footer certifies the block itself, `find_ancestry` takes a later certified block D, rebuilds each block's id from its shreds on the way down, and writes the links into the fixture (`ancestry`; the certificate is then D's, checked against D's epoch's set).
+
 Two sources today:
 - **`Ledger`**: an Agave ledger's RocksDB, read-only, so it's safe while the validator runs. That's your local validator, or any node's ledger on devnet or mainnet. It uses the exact RocksDB version Agave 4.4.0 uses.
 - **`ShredFiles`**: a directory of `shreds_<slot>.json` files, written by `export`. Use it offline and in tests.
@@ -252,7 +257,7 @@ Asks a validator for a block's shreds with Agave's own **repair protocol**, the 
 - `src/wire.rs`: the bytes on the wire (request layout, what is signed, ping and pong, reply parsing). Three unit tests.
 - `src/client.rs`: one UDP socket, a random throwaway identity, one peer. `ask` sends a signed request, answers a ping with a pong, retries.
 - `src/lib.rs`: `fetch_shape` (parent info and every FEC set root, each proven against the `block_id`, no shreds downloaded), `fetch_block` (all data shreds by block id, checked against those roots), `fetch_slot` (by slot when the id isn't known yet), `write_shred_file`.
-- `src/main.rs`: the CLI.
+- `src/main.rs`: the CLI. `fetch` writes the block, then walks forward block by block until a footer certifies it **or any later block** (a skipped block is final through its descendant). Every block it passes is written, so `ledger-dump` can build the parent links from the files.
 
 ```bash
 cargo run --release -p shred-repair -- peers                      # who serves repair (getClusterNodes)
@@ -262,11 +267,45 @@ ledger-dump --shreds DIR --slot N                                  # certificate
 ```
 
 Why this is safe: the peer is untrusted. Every set root and the parent info come with a Merkle proof to the certified `block_id`, and the shreds must reproduce those roots, so a wrong or lying peer simply fails. A wrong block id gets no answer at all. Tested against a real Agave 4.4.0 validator (`tests/live.rs`, ignored by default, needs a running validator). See `docs/research/read-layer.md` for the protocol details and what is still unverified (devnet and mainnet peers).
+
+### `src/bank.rs` and `src/state.rs`: proving what a block changed
+The state proof (design: `docs/research/state-proof.md`). `bank.rs` holds the two hashes a block's footer commits to:
+- **the accounts lattice hash**: a 2,048-byte sum, over all accounts, of a BLAKE3 hash of each (lamports, data, executable, owner, address); adding and subtracting account hashes is exact, so one block's change is a small edit;
+- **the bank hash**: `sha256( sha256(parent bank hash | signature count | last blockhash) | lattice hash )`.
+
+`state.rs` is the statement "block B is final, and these accounts changed in it, from these values to these values":
+1. B is final (the certificate and ancestry from `proof.rs`);
+2. B's footer is read from B's own shreds, at the one place replay accepts it: the second-to-last component, followed by the single tick that ends the slot;
+3. the bank hash opens down to the parent's lattice hash;
+4. the changed accounts turn the parent's lattice hash into B's (a false change set would be a collision in the lattice hash);
+5. the change set is committed as a Merkle tree, the **diff root** (leaf = `sha256(0 | key | digest before | digest after)`, the root commits to the leaf count), so one proof serves every account the block changed, and "X did not change" is provable too;
+6. optionally the footers of descendants of B are opened as well. B's footer sits behind the shred tree's 20-byte nodes; a descendant's bank hash reaches B's through full 32-byte hashes, so a forger would have to lead every block up to the highest footer opened. The proof counts the distinct later leader windows covered.
+
+`proof.rs` carries it as `ClaimInput` (certificate, ancestry, optionally a transaction and/or a change set) and `ClaimOutput::encode` (public values version 2: the header, then tagged claims: tag 1 a transaction, tag 2 `bank_hash | diff_root | leaf_count`).
+
+*Tests:* `tests/state.rs` (22): on a real block (slot 156,070 of a local Alpenglow chain, replayed with `agave-ledger-tool`) the verifier accepts the real witness, with and without descendants, and refuses a changed or false value, a missing account, a repeated or unsorted key, a wrong parent hash, wrong signature count, last blockhash or lattice hash, a footer from another block, a footer run that does not end the slot or starts mid-component, a changed footer shred, wrong block roots, a confirmation that does not chain, too many confirmations, and no claim at all. `src/bank.rs` has Agave's own published test vector for the lattice hash.
+
+### `src/accounts_dump.rs` (feature `fixture`, host only) and the S1 tools
+`agave-ledger-tool accounts --include-sysvars` prints every account as text. `accounts_dump` parses it (it prints balances as f64 SOL, which cannot hold a faucet's balance to the lamport; the parser recovers that one account's lamports by matching Agave's checksum).
+- `examples/check_bank_hash.rs`: S1, offline. Rebuilds the lattice hash and bank hash of a real replayed slot and compares them with Agave's own values and with the block's footer. Run on local slots 156,069 to 156,072 (Agave 4.4.0): the lattice-hash and bank-hash checks pass for every slot; the footer was compared for one slot (156,070).
+- `examples/make_state_fixture.rs`: builds `fixtures/local/state_156070.json` (the witness, 1.1 MB) from replayed slots, after checking every lattice hash and bank hash it uses.
+- `examples/make_state_pv.rs`: writes the Solidity test fixture for the state registry from it.
+- `examples/verify_block.rs`: native check of one transaction in a `ledger-dump` block file (`first` checks the block's first transaction).
+- `ledger-dump --via D`: certify a block through the later block D even when it has its own certificate, to exercise long ancestry chains on real data (3 to 21 links verified on devnet blocks).
+- `zk/prover --state fixtures/local/state_156070.json --depth 2 --confirm 2`: runs the state claim in the zkVM (27.5M cycles for a block with 6 changed accounts, two of them 160 KB sysvars; 8.6M of that is reading the input).
+
+### `solana/outbox` and `solana/fill`: the Solana side of the order-settlement demo
+Two small programs, built with `cargo build-sbf` (not part of the Rust workspace), meant to be deployed **immutable**:
+- **`outbox`**: `emit(payload)` appends a message to the caller's emitter account, a PDA holding `emitter | sequence | hash chain`. A failed transaction leaves nothing, so the account's value proves the messages were emitted by transactions that succeeded.
+- **`fill`**: a solver pays a merchant (`transfer_checked`, destination checked to belong to the merchant), creates a marker so an order fills once, and emits the order's message through the outbox from one of 16 shard PDAs. The order id covers `amount_in`. The outbox id is pinned at build time (`HUGINN_OUTBOX_ID`, via `build.rs`; also needed for `cargo test`). Only canonical PDAs are accepted: the marker and shard are derived with `find_program_address` on every fill (a second valid bump would give an order a second marker), and the outbox accepts only the canonical address when it creates an emitter account. `examples/shards.rs` prints the shard list the escrow stores and each shard's outbox state bump.
+
+*Tests:* host unit tests (`cargo test` in each folder; `fill` needs `HUGINN_OUTBOX_ID` set even for tests) cover the hash chain, order id, payload layout and parsers against reference values shared with the Solidity escrow's tests. **The programs have not been built for SBF or run on a validator**: that needs network access to fetch the SBF build's dependencies.
+
 ### `zk/program`: what gets proven
 `src/main.rs` (~25 lines):
 1. read a `TxInput`;
 2. `finality.verify()`;
-3. `inclusion.verify(...)`;
+3. `input.verify_block(finality)`: walk the ancestry, find the transaction, check its signatures;
 4. commit `TxOutput::encode()` as public values.
 
 If anything fails it panics, and then no proof can exist. The `cycle-tracker` lines split the cost report into finality and inclusion.

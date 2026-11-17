@@ -42,6 +42,13 @@
 
 **Missing key entries.** A member's vote account is written in the epoch-boundary block (admission fee, usually also a voting reward). If those two amounts cancel, its state is unchanged and the delta proof has no entry for it. That must not lock the member out: fall back to the key from the recorder block's delta, and test this case.
 
+## Changes after the 15 Nov 2026 reviews
+Two internal reviews of the state-proof design (`research/state-proof.md`, section 13b) also audited Layer 1. What changed:
+- **Transaction signatures are now checked inside the proof.** Before, Huginn relied on Solana's replay having rejected blocks with bad signatures. That is not safe once Alpenglow's fast leader handover is on: the part of a block before an UpdateParent marker is never replayed, yet it is covered by the block_id, so an unsigned transaction "from" a controller key could be proven. Each proven transaction's Ed25519 signatures are now verified (strict verification, as Agave's sigverify does). The feature is not active on devnet today; the check closes the gap before it is.
+- **Blocks that never got their own certificate can be proven** through a certified descendant (the parent links are checked against the block ids). Some devnet slots need this (2 of 7 in the first sample, 1 of 20 transaction-bearing slots in the acceptance loop). The light client now checks the validator set of the *certified* block's epoch and records both blocks.
+- **Merkle nodes in shred trees are 20 bytes**, so forging one by a block's own leader costs about 2^80, not SHA-256 strength. Keep per-proof value caps; the state proof can additionally open descendants' footers, which commit to the block with full 32-byte hashes.
+- Not changed: the owner-posted validator set and inexact stakes remain the root of trust (see the handover section).
+
 ## Reviews
 
 | Round | Findings | Outcome |

@@ -45,6 +45,8 @@ pub enum Error {
     Version(u8),
     #[error("transaction is not well formed: {0}")]
     Invalid(&'static str),
+    #[error("signature {0} does not verify against its account key and the message")]
+    BadSignature(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,6 +85,25 @@ impl Transaction<'_> {
     /// The accounts that signed (the first `num_required_signatures` static keys).
     pub fn signers(&self) -> &[[u8; 32]] {
         &self.account_keys[..self.num_required_signatures as usize]
+    }
+
+    /// Checks every required signature against its account key and the signed message, with
+    /// Ed25519 *strict* verification: what Agave's sigverify applies to every transaction in
+    /// a block it replays.
+    ///
+    /// Huginn used to rely on replay having done this. That is not safe to assume: a block's
+    /// components before an UpdateParent marker (fast leader handover) are never replayed, but
+    /// they are still covered by the block_id, so an unsigned transaction "from" any key could
+    /// sit there and be proven. A contract that takes its authority from a transaction's
+    /// signers (a Solana-controlled contract) must never see one.
+    pub fn verify_signatures(&self) -> Result<(), Error> {
+        use ed25519_dalek::{Signature, VerifyingKey};
+        for (i, (key, sig)) in self.signers().iter().zip(&self.signatures).enumerate() {
+            let key = VerifyingKey::from_bytes(key).map_err(|_| Error::BadSignature(i))?;
+            key.verify_strict(self.message, &Signature::from_bytes(sig))
+                .map_err(|_| Error::BadSignature(i))?;
+        }
+        Ok(())
     }
 
     /// An instruction's program id, when it is a static key (always true for program ids:

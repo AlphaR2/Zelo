@@ -11,7 +11,7 @@
 //!   cargo run --release -- --prove groth16      # needs Docker running (gnark wrap)
 
 use {
-    alpenglow_core::{fixture, proof::TxInput},
+    alpenglow_core::{fixture, proof::ClaimInput},
     anyhow::Result,
     clap::Parser,
     huginn_prover::{alpenglow_core, tx_input_from_block_file, Huginn, Mode},
@@ -38,6 +38,18 @@ struct Cli {
     /// Also prove each run: core, compressed or groth16.
     #[arg(long)]
     prove: Option<Mode>,
+    /// Run a state claim instead: a `fixtures/local/state_*.json` (from `make_state_fixture`),
+    /// certified by synthetic validators. `--depth` descendants form the ancestry and the
+    /// witness opens the first `--confirm` of their footers.
+    #[arg(long)]
+    state: Option<String>,
+    #[arg(long, default_value_t = 0)]
+    depth: usize,
+    #[arg(long, default_value_t = 0)]
+    confirm: usize,
+    /// Synthetic validators certifying a `--state` run.
+    #[arg(long, default_value_t = 21)]
+    validators: usize,
     /// Where proof summaries go.
     #[arg(long, default_value = "../../fixtures/proofs")]
     out: String,
@@ -47,6 +59,26 @@ struct Cli {
 async fn main() -> Result<()> {
     sp1_sdk::utils::setup_logger();
     let cli = Cli::parse();
+    if let Some(path) = &cli.state {
+        let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+        let fx = fixture::state_fixture(&f, cli.depth, cli.confirm);
+        let base = alpenglow_core::proof::FinalityInput {
+            validators: vec![],
+            shred_version: fx.shred_version,
+            slot: fx.certified.0,
+            block_id: fx.certified.1,
+            final_aggregate: alpenglow_core::proof::Aggregate { signature: vec![], bitmap: vec![] },
+            notar_aggregate: None,
+        };
+        let input = ClaimInput { finality: fixture::synthetic(&base, cli.validators), ancestry: fx.links, tx: None, state: Some(fx.witness) };
+        let huginn = Huginn::from_env().await;
+        let e = huginn.execute(&input).await?;
+        println!(
+            "state claim, {} changed accounts, {} ancestry link(s), {} footer(s) opened: read {} + finality {} + claims {}, total {} cycles",
+            input.state.as_ref().unwrap().changes.len(), input.ancestry.len(), cli.confirm, e.read_cycles, e.finality_cycles, e.inclusion_cycles, e.total_cycles
+        );
+        return Ok(());
+    }
     let real = tx_input_from_block_file(&cli.block, &cli.signature)?;
 
     let path = if real.finality.notar_aggregate.is_none() { "fast" } else { "slow" };
@@ -54,10 +86,10 @@ async fn main() -> Result<()> {
     let label = format!("real, {n} validator{}, {path}", if n == 1 { "" } else { "s" });
     let mut runs = vec![(label, real.clone())];
     for &n in &cli.synthetic {
-        runs.push((format!("{n} validators, fast"), TxInput { finality: fixture::synthetic(&real.finality, n), ..real.clone() }));
+        runs.push((format!("{n} validators, fast"), ClaimInput { finality: fixture::synthetic(&real.finality, n), ..real.clone() }));
     }
     for &n in &cli.slow {
-        runs.push((format!("{n} validators, slow"), TxInput { finality: fixture::synthetic_slow(&real.finality, n), ..real.clone() }));
+        runs.push((format!("{n} validators, slow"), ClaimInput { finality: fixture::synthetic_slow(&real.finality, n), ..real.clone() }));
     }
 
     let huginn = Huginn::from_env().await;

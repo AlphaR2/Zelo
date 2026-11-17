@@ -13,7 +13,10 @@
 //! A ShredStream receiver or a repair-protocol client would be one more `ShredSource`.
 
 use {
-    alpenglow_core::block::{self, Component, Marker},
+    alpenglow_core::{
+        block::{self, Component, Marker},
+        proof::MAX_ANCESTRY,
+    },
     alpenglow_lc::{
         cert::{verify_footer, FooterCert},
         shred::{self, Kind, Shred},
@@ -244,6 +247,128 @@ impl Certs {
     }
 }
 
+impl Certs {
+    /// Certificates for blocks *after* `slot`, within the ancestry limit, nearest block first.
+    /// A footer carries the certificate of the newest block final when it was written, so a
+    /// block that was skipped over never gets its own: it is final because a descendant is.
+    fn later(&self, src: &dyn ShredSource, slot: u64, last: u64) -> Result<Vec<Value>> {
+        let limit = slot + MAX_ANCESTRY as u64;
+        let mut found: Vec<Value> = Vec::new();
+        let mut add = |c: Value| {
+            let cs = c["slot"].as_u64().unwrap_or(0);
+            if cs > slot && cs <= limit && !found.iter().any(|f| f["slot"] == c["slot"]) {
+                found.push(c);
+            }
+        };
+        match self {
+            Certs::Shreds => {
+                for later in slot + 1..=last.min(limit) {
+                    let data = src.data_shreds(later)?;
+                    if data.is_empty() {
+                        continue;
+                    }
+                    if let Some(c) = footer_cert(&data)? {
+                        add(c);
+                    }
+                }
+            }
+            Certs::Plugin(certs) => certs.iter().cloned().for_each(&mut add),
+        }
+        found.sort_by_key(|c| c["slot"].as_u64());
+        Ok(found)
+    }
+}
+
+/// The parents a block names for itself: its header, and any update-parent marker. The
+/// right one is the one that rebuilds the block's certified id.
+fn parent_candidates(shreds: &[Shred]) -> Vec<(u64, [u8; 32])> {
+    let mut out = Vec::new();
+    if let Ok(components) = block::deshred(shreds) {
+        for c in &components {
+            match block::parse_component(c) {
+                Ok(Component::Marker(Marker::Header {
+                    parent_slot: ps,
+                    parent_block_id: pb,
+                }))
+                | Ok(Component::Marker(Marker::UpdateParent {
+                    parent_slot: ps,
+                    parent_block_id: pb,
+                })) => out.push((ps, pb)),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// A certified descendant of `slot` and the parent links back to it.
+pub struct Ancestry {
+    /// The certificate of the descendant D (the plugin's JSON shape).
+    pub cert: Value,
+    /// One link per block from D down to `slot`'s child, nearest D first: each block's FEC
+    /// roots and the parent its block_id names. The last link's parent is `slot` itself.
+    pub links: Vec<Value>,
+    /// The block_id of `slot`, as named by its child's parent leaf.
+    pub block_id: [u8; 32],
+}
+
+/// Finds a certificate for a later block D and walks parent links from D down to `slot`,
+/// rebuilding each block's id from its shreds in the source. `None` reasons are reported.
+fn find_ancestry(src: &dyn ShredSource, certs: &Certs, slot: u64, last: u64, only: Option<u64>) -> Result<Ancestry> {
+    let mut candidates = certs.later(src, slot, last)?;
+    if let Some(d) = only {
+        candidates.retain(|c| c["slot"].as_u64() == Some(d));
+    }
+    if candidates.is_empty() {
+        bail!("no later block in {} carries a certificate yet", src.describe());
+    }
+    let mut why = String::new();
+    for raw in candidates {
+        let cert: FooterCert = serde_json::from_value(raw.clone())?;
+        let (mut cur_slot, mut cur_id) = (cert.slot, cert.block_id);
+        let mut links: Vec<Value> = Vec::new();
+        let outcome = loop {
+            let Some(data) = src.data_shreds(cur_slot).ok().filter(|d| !d.is_empty()) else {
+                break Err(format!("the source has no shreds for slot {cur_slot}"));
+            };
+            let shreds = data
+                .iter()
+                .map(|b| Shred::parse(b))
+                .collect::<Result<Vec<_>, _>>()?;
+            let roots = shred::fec_roots(cur_slot, &shreds)?;
+            let Some((ps, pb)) = parent_candidates(&shreds)
+                .into_iter()
+                .find(|(ps, pb)| shred::block_id(&roots, *ps, pb).is_ok_and(|id| id == cur_id))
+            else {
+                break Err(format!("slot {cur_slot}: no parent in its header rebuilds its block id"));
+            };
+            links.push(json!({
+                "fec_roots": roots.iter().map(hex::encode).collect::<Vec<_>>(),
+                "parent_slot": ps,
+                "parent_block_id": hex::encode(pb),
+            }));
+            if ps == slot {
+                break Ok(pb);
+            }
+            if ps < slot || links.len() >= MAX_ANCESTRY {
+                break Err(format!("the chain from slot {} passes {slot} without meeting it", cert.slot));
+            }
+            (cur_slot, cur_id) = (ps, pb);
+        };
+        match outcome {
+            Ok(block_id) => {
+                return Ok(Ancestry {
+                    cert: raw,
+                    links,
+                    block_id,
+                })
+            }
+            Err(e) => why = format!("certificate for {}: {e}", cert.slot),
+        }
+    }
+    bail!("no certified descendant of {slot} could be linked back to it ({why})")
+}
+
 /// The finalization certificate in a block's footer, in the plugin's JSON shape (so both
 /// sources feed the same checks and the same fixture format). `None` if the block has no
 /// footer yet or the footer carries no certificate.
@@ -353,6 +478,19 @@ pub fn build_fixture(
     sets: &Sets,
     certs: &Certs,
 ) -> Result<Built> {
+    build_fixture_via(src, slot, sets, certs, None)
+}
+
+/// [`build_fixture`], but with `via = Some(d)` the block's own certificate is ignored and the
+/// certificate of the later block `d` is used, with the parent links back. For exercising
+/// long ancestry chains on real data; a normal run uses the block's own certificate when there is one.
+pub fn build_fixture_via(
+    src: &dyn ShredSource,
+    slot: u64,
+    sets: &Sets,
+    certs: &Certs,
+    via: Option<u64>,
+) -> Result<Built> {
     let (first, last) = src.range()?;
     let data = src.data_shreds(slot)?;
     let code = src.code_shreds(slot)?;
@@ -388,9 +526,32 @@ pub fn build_fixture(
         );
     }
 
-    // The validator set of the slot's epoch. RPC only serves the current epoch's stakes,
+    // The certificate: the block's own (a later footer names it), or, when the block was
+    // skipped over and never got one, a later block's, with the parent links back to it.
+    let direct = match via {
+        Some(d) => Err(anyhow::anyhow!("asked to certify {slot} through {d}")),
+        None => certs.for_slot(src, slot, last),
+    };
+    let (raw_cert, ancestry, target_id) = match direct {
+        Ok(c) => {
+            let id = serde_json::from_value::<FooterCert>(c.clone())?.block_id;
+            (c, None, id)
+        }
+        Err(direct) => match find_ancestry(src, certs, slot, last, via) {
+            Ok(a) => {
+                let id = a.block_id;
+                (a.cert.clone(), Some(a), id)
+            }
+            Err(e) => bail!("{direct:#}\n  and {e:#}"),
+        },
+    };
+    let cert: FooterCert = serde_json::from_value(raw_cert.clone())?;
+    // The set that checks the certificate is the certified block's epoch, which can be a
+    // later epoch than the transaction's block.
+    let epoch = cert.slot / sets.slots_per_epoch;
+
+    // The validator set of that epoch. RPC only serves the current epoch's stakes,
     // so the set must have been fetched during that epoch.
-    let epoch = slot / sets.slots_per_epoch;
     let set_path = sets.dir.join(format!("validator_set_{epoch}.json"));
     let set_json = read_json(&set_path).with_context(|| {
         format!(
@@ -401,13 +562,14 @@ pub fn build_fixture(
     let set: ValidatorSet = serde_json::from_value(set_json["validator_set"].clone())?;
     if set.epoch != epoch {
         bail!(
-            "{} holds epoch {}, slot {slot} is in epoch {epoch}",
+            "{} holds epoch {}, the certified slot {} is in epoch {epoch}",
             set_path.display(),
-            set.epoch
+            set.epoch,
+            cert.slot
         );
     }
     // A parent in an earlier epoch would need that epoch's set too; not handled yet.
-    if parent_slot / sets.slots_per_epoch != epoch {
+    if ancestry.is_none() && parent_slot / sets.slots_per_epoch != epoch {
         bail!("parent {parent_slot} is in a different epoch than {slot}");
     }
 
@@ -415,13 +577,13 @@ pub fn build_fixture(
     // block that was final when it was written, which on a busy cluster is often not the
     // parent, and finalizing a block finalizes its ancestors, so a parent may never get one.
     // When it is there (a local chain, mostly) it is checked too.
-    let raw_parent = match certs {
-        Certs::Shreds => footer_cert(&data)?.filter(|c| c["slot"] == parent_slot),
-        Certs::Plugin(_) => certs.for_slot(src, parent_slot, last).ok(),
+    let raw_parent = match (certs, &ancestry) {
+        (_, Some(_)) => None,
+        (Certs::Shreds, None) => footer_cert(&data)?.filter(|c| c["slot"] == parent_slot),
+        (Certs::Plugin(_), None) => certs.for_slot(src, parent_slot, last).ok(),
     };
-    let raw_cert = certs.for_slot(src, slot, last)?;
-    let cert: FooterCert = serde_json::from_value(raw_cert.clone())?;
-    verify_footer(&cert, shred_version, &set).with_context(|| format!("cert for {slot}"))?;
+    verify_footer(&cert, shred_version, &set)
+        .with_context(|| format!("cert for {}", cert.slot))?;
     let parent_cert: Option<FooterCert> = match &raw_parent {
         Some(raw) => {
             let c: FooterCert = serde_json::from_value(raw.clone())?;
@@ -439,25 +601,11 @@ pub fn build_fixture(
     if let Some(c) = &parent_cert {
         candidates.push((parent_slot, c.block_id));
     }
-    if let Ok(components) = block::deshred(&shreds) {
-        for c in &components {
-            match block::parse_component(c) {
-                Ok(Component::Marker(Marker::Header {
-                    parent_slot: ps,
-                    parent_block_id: pb,
-                }))
-                | Ok(Component::Marker(Marker::UpdateParent {
-                    parent_slot: ps,
-                    parent_block_id: pb,
-                })) => candidates.push((ps, pb)),
-                _ => {}
-            }
-        }
-    }
+    candidates.extend(parent_candidates(&shreds));
     let (parent_slot_used, parent_block_id) = candidates
         .iter()
         .copied()
-        .find(|(ps, pb)| shred::block_id(&roots, *ps, pb).is_ok_and(|id| id == cert.block_id))
+        .find(|(ps, pb)| shred::block_id(&roots, *ps, pb).is_ok_and(|id| id == target_id))
         .or(candidates.first().copied())
         .with_context(|| format!("slot {slot}: no parent block id in its header or footer"))?;
     let parent_source = if parent_cert.is_some() {
@@ -469,17 +617,31 @@ pub fn build_fixture(
     let report = vec![
         format!("slot {slot} (epoch {epoch}): {} data + {} coding shreds, {} FEC set(s), parent {parent_slot}", data.len(), code.len(), roots.len()),
         format!(
-            "  cert for {slot}{} verifies (shred version {shred_version}, from {}); parent block id from {parent_source}",
+            "  cert for {}{} verifies (shred version {shred_version}, from {}); parent block id from {parent_source}",
+            cert.slot,
             if parent_cert.is_some() { format!(" and for {parent_slot}") } else { String::new() },
             match certs {
                 Certs::Shreds => "the shreds' footers",
                 Certs::Plugin(_) => "the plugin",
             }
         ),
+        match &ancestry {
+            Some(a) if via.is_some() => format!(
+                "  slot {slot} certified through slot {} as asked (--via), {} parent link(s) back",
+                cert.slot,
+                a.links.len()
+            ),
+            Some(a) => format!(
+                "  slot {slot} has no certificate of its own: certified through slot {}, {} parent link(s) back",
+                cert.slot,
+                a.links.len()
+            ),
+            None => format!("  slot {slot} carries its own certificate"),
+        },
         format!("  computed block_id  {}", hex::encode(computed)),
-        format!("  certified block_id {}", hex::encode(cert.block_id)),
+        format!("  certified block_id {}", hex::encode(target_id)),
     ];
-    if computed != cert.block_id {
+    if computed != target_id {
         bail!(
             "{}\nblock_id mismatch: not writing a fixture",
             report.join("\n")
@@ -496,7 +658,11 @@ pub fn build_fixture(
         "shred_version": shred_version,
         "validator_set": set_json["validator_set"],
         "cert_source": certs.name(),
+        // The certificate of the certified block: this one, or a descendant (see `ancestry`).
         "block_final_cert": raw_cert,
+        // Parent links from the certified block down to this one, nearest the certificate
+        // first; empty when the certificate is this block's own.
+        "ancestry": ancestry.as_ref().map(|a| a.links.clone()).unwrap_or_default(),
         "parent_block_id": hex::encode(parent_block_id),
         "parent_block_final_cert": raw_parent,
         // Coding shreds aren't needed to rebuild the block_id (checked above, not stored).

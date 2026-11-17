@@ -5,8 +5,9 @@
 use {
     crate::{
         finality::{hash_to_g2, CertType},
-        proof::{Aggregate, BlockInput, FinalityInput, TxInclusion, TxInput, Validator},
+        proof::{AncestryLink, Aggregate, BlockInput, FinalityInput, TxInclusion, TxInput, Validator},
         shred::Hash,
+        state::{Account, AccountChange, BankParts, Confirmation, FooterRun, StateWitness},
     },
     bls12_381::{G1Affine, G1Projective, G2Affine, Scalar},
     serde_json::Value,
@@ -65,6 +66,29 @@ pub fn block_input(f: &Value) -> BlockInput {
     }
 }
 
+/// The parent links in a fixture (`ancestry`), nearest the certified block first. Empty when
+/// the fixture's certificate is the block's own, and for fixtures that predate the field.
+pub fn ancestry(f: &Value) -> Vec<AncestryLink> {
+    f["ancestry"]
+        .as_array()
+        .map(|links| {
+            links
+                .iter()
+                .map(|l| AncestryLink {
+                    fec_roots: l["fec_roots"]
+                        .as_array()
+                        .expect("fec_roots")
+                        .iter()
+                        .map(hash)
+                        .collect(),
+                    parent_slot: l["parent_slot"].as_u64().expect("parent_slot"),
+                    parent_block_id: hash(&l["parent_block_id"]),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Finality for the fixture's block plus the smallest inclusion of transaction `signature`.
 pub fn tx_input(f: &Value, signature: [u8; 64]) -> TxInput {
     let b = block_input(f);
@@ -73,6 +97,7 @@ pub fn tx_input(f: &Value, signature: [u8; 64]) -> TxInput {
             .expect("tx in block");
     TxInput {
         finality: b.finality,
+        ancestry: ancestry(f),
         inclusion,
     }
 }
@@ -152,5 +177,101 @@ pub fn synthetic_slow(base: &FinalityInput, n: usize) -> FinalityInput {
         notar_aggregate: Some(sign(&sks, &signers, notar, base.shred_version)),
         validators,
         ..base.clone()
+    }
+}
+
+
+// ---- state proofs ---------------------------------------------------------------------------
+
+fn lt(v: &Value) -> Vec<u16> {
+    bytes(v).chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect()
+}
+
+fn parts(v: &Value) -> BankParts {
+    BankParts {
+        signature_count: v["signature_count"].as_u64().expect("signature_count"),
+        last_blockhash: hash(&v["last_blockhash"]),
+        lt_hash: lt(&v["lt_hash"]),
+    }
+}
+
+fn footer(v: &Value) -> FooterRun {
+    FooterRun {
+        boundary_shred: bytes(&v["boundary_shred"]),
+        shreds: v["shreds"].as_array().expect("shreds").iter().map(bytes).collect(),
+    }
+}
+
+fn account(v: &Value) -> Option<Account> {
+    (!v.is_null()).then(|| Account {
+        lamports: v["lamports"].as_u64().expect("lamports"),
+        data: bytes(&v["data"]),
+        executable: v["executable"].as_bool().expect("executable"),
+        owner: hash(&v["owner"]),
+    })
+}
+
+/// A real block's change set, from `examples/make_state_fixture` (a local ledger replayed with
+/// `agave-ledger-tool`), and the parent links and footers of its descendants.
+pub struct StateFixture {
+    pub slot: u64,
+    pub block_id: Hash,
+    pub shred_version: u16,
+    pub witness: StateWitness,
+    /// Links from the certified block down to B (nearest the certified block first). Empty when
+    /// B is itself the certified block.
+    pub links: Vec<AncestryLink>,
+    /// The certified block: B, or the `depth`-th descendant.
+    pub certified: (u64, Hash),
+}
+
+/// `depth` descendants form the ancestry (0 = B is the certified block); the witness opens
+/// the footers of the first `confirm` of them (at most `depth`).
+pub fn state_fixture(f: &Value, depth: usize, confirm: usize) -> StateFixture {
+    let desc = f["descendants"].as_array().expect("descendants");
+    assert!(depth <= desc.len() && confirm <= depth);
+    let link = |d: &Value| AncestryLink {
+        fec_roots: d["fec_roots"].as_array().expect("fec_roots").iter().map(hash).collect(),
+        parent_slot: d["parent_slot"].as_u64().expect("parent_slot"),
+        parent_block_id: hash(&d["parent_block_id"]),
+    };
+    let links: Vec<AncestryLink> = desc[..depth].iter().rev().map(link).collect();
+    let certified = match depth {
+        0 => (f["slot"].as_u64().unwrap(), hash(&f["block_id"])),
+        d => (desc[d - 1]["slot"].as_u64().unwrap(), hash(&desc[d - 1]["block_id"])),
+    };
+    let witness = StateWitness {
+        fec_roots: f["fec_roots"].as_array().expect("fec_roots").iter().map(hash).collect(),
+        parent_slot: f["parent_slot"].as_u64().expect("parent_slot"),
+        parent_block_id: hash(&f["parent_block_id"]),
+        footer: footer(&f["footer"]),
+        inner_parent: hash(&f["inner_parent"]),
+        lt_parent: lt(&f["lt_parent"]),
+        block: parts(&f["block"]),
+        changes: f["changes"]
+            .as_array()
+            .expect("changes")
+            .iter()
+            .map(|c| AccountChange {
+                pubkey: hash(&c["pubkey"]),
+                pre: account(&c["pre"]),
+                post: account(&c["post"]),
+            })
+            .collect(),
+        confirmations: desc[..confirm]
+            .iter()
+            .map(|d| Confirmation { footer: footer(&d["footer"]), parts: parts(&d["parts"]) })
+            .collect(),
+    };
+    let shred_version = crate::shred::Shred::parse(&witness.footer.boundary_shred)
+        .expect("boundary shred")
+        .version();
+    StateFixture {
+        slot: f["slot"].as_u64().unwrap(),
+        block_id: hash(&f["block_id"]),
+        shred_version,
+        witness,
+        links,
+        certified,
     }
 }

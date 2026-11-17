@@ -1,0 +1,18 @@
+[package]
+name = "huginn-outbox"
+version = "0.1.0"
+edition = "2021"
+description = "Huginn outbox: lets a key or a program leave a message for other chains, provable from a Solana block."
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program = "2.3"
+
+# Not part of the huginn workspace: built with `cargo build-sbf`.
+[workspace]

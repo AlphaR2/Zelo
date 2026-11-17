@@ -11,6 +11,13 @@ version.workspace = true
 # hash_to_curve, which in the patched crate takes a digest-0.10 hasher (sha2 0.10).
 bls12_381 = { version = "=0.8.0", default-features = false, features = ["groups", "pairings", "alloc", "experimental"] }
 sha2.workspace = true
+# The accounts lattice hash is BLAKE3 with 2,048 bytes of output (SIMD-0215). Portable code
+# only: it runs in the zkVM too.
+blake3 = { version = "1", default-features = false }
+# Transaction signatures (strict verification, as Agave's sigverify does). Plain crates.io
+# build for now; SP1 has a patched curve25519-dalek that runs on a precompile, which would
+# cut the cycles by two orders of magnitude (see docs/research/state-proof.md, S0b).
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 thiserror.workspace = true
 serde.workspace = true
 # Feature `fixture`: build inputs from JSON fixtures or synthetic sets (host side only).

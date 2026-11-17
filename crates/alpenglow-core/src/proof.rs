@@ -12,6 +12,7 @@ use {
         block,
         finality::{self, CertType},
         shred::{self, Hash, Shred, DATA_SHREDS_PER_FEC_SET},
+        state::{self, StateClaim, StateWitness},
         tx,
     },
     serde::{Deserialize, Serialize},
@@ -92,6 +93,16 @@ pub enum Error {
     TxSignatureLength,
     #[error("transaction not found in the given shreds")]
     TxNotFound,
+    #[error("ancestry has {0} links, at most {max} are allowed", max = MAX_ANCESTRY)]
+    AncestryTooLong(usize),
+    #[error("the transaction's signature {0} does not verify")]
+    TxSignature(usize),
+    #[error(transparent)]
+    State(#[from] state::Error),
+    #[error("a proof must make at least one claim")]
+    NoClaims,
+    #[error("ancestry link: parent slot {parent_slot} is not below slot {slot}")]
+    AncestryOrder { slot: u64, parent_slot: u64 },
 }
 
 /// The validator set commitment (item 1.1). A destination chain stores this per epoch.
@@ -325,21 +336,32 @@ impl TxInclusion {
         // `deshred` checks the run is consecutive and ends on a DATA_COMPLETE shred.
         let components = block::deshred(&shreds)?;
         let mut start = first.index();
+        let mut unsigned = None;
         for bytes in &components {
             // Only the bytes up to the transaction are parsed (`find_in_component`). A
             // component that fails to parse before reaching it simply doesn't count:
             // components are framed by the shreds' DATA_COMPLETE flags, not by each other.
             if let Ok(Some((e, t, tx))) = block::find_in_component(bytes, &sig) {
-                return Ok(IncludedTx {
-                    component_start_shred: start,
-                    entry_index: e as u32,
-                    tx_index: t as u32,
-                    raw: tx.raw.to_vec(),
-                });
+                // Replay would have refused a transaction with a bad signature, but not every
+                // component is replayed (the prefix before an UpdateParent marker is not), so
+                // the proof checks the signatures itself. A transaction that fails does not
+                // count, like one that fails to parse: another component may hold the real one.
+                match tx.verify_signatures() {
+                    Ok(()) => {
+                        return Ok(IncludedTx {
+                            component_start_shred: start,
+                            entry_index: e as u32,
+                            tx_index: t as u32,
+                            raw: tx.raw.to_vec(),
+                        })
+                    }
+                    Err(tx::Error::BadSignature(i)) => unsigned = Some(i),
+                    Err(_) => {}
+                }
             }
             start += shreds_in(bytes, &shreds, start)?;
         }
-        Err(Error::TxNotFound)
+        Err(unsigned.map_or(Error::TxNotFound, Error::TxSignature))
     }
 
     /// Builds the smallest inclusion for `signature` from a whole block's data shreds.
@@ -392,55 +414,234 @@ fn shreds_in(bytes: &[u8], shreds: &[Shred], start: u32) -> Result<u32, Error> {
     Err(Error::Block(block::Error::Unterminated))
 }
 
+/// The most blocks the proof may walk back from the certified block to the proven one.
+/// Certificates trail the block they certify by a few slots; 64 leaves a wide margin.
+pub const MAX_ANCESTRY: usize = 64;
+
+/// One step back along parent links: the FEC set roots of a block and the parent its
+/// block_id names. Rebuilding the block_id from these proves the parent, with no shred.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AncestryLink {
+    pub fec_roots: Vec<Hash>,
+    pub parent_slot: u64,
+    pub parent_block_id: Hash,
+}
+
+/// Walks from the certified block `(slot, block_id)` back through `links`, each rebuilt
+/// against the id the previous step named, and returns the block the walk ends at.
+///
+/// A block_id commits to its parent's slot and block_id (the Merkle tree's last leaf), so a
+/// certified block certifies every ancestor along this chain: finality covers all that came
+/// before. No link says which slot it describes; the slot comes from the child's parent leaf,
+/// and a later check against the shreds' own slot ties the two together.
+pub fn verify_ancestry(
+    slot: u64,
+    block_id: &Hash,
+    links: &[AncestryLink],
+) -> Result<(u64, Hash), Error> {
+    let path = ancestry_path(slot, block_id, links)?;
+    Ok(*path.last().expect("the path holds at least the certified block"))
+}
+
+/// Like [`verify_ancestry`], but returns every block on the way: `path[0]` is the certified
+/// block, `path[i]` is the block `links[i - 1]` names as parent, and the last is the one the
+/// walk ends at. `links[i]` describes the block `path[i]`.
+pub fn ancestry_path(
+    slot: u64,
+    block_id: &Hash,
+    links: &[AncestryLink],
+) -> Result<Vec<(u64, Hash)>, Error> {
+    if links.len() > MAX_ANCESTRY {
+        return Err(Error::AncestryTooLong(links.len()));
+    }
+    let mut path = vec![(slot, *block_id)];
+    let (mut slot, mut id) = (slot, *block_id);
+    for link in links {
+        let computed = shred::block_id(&link.fec_roots, link.parent_slot, &link.parent_block_id)?;
+        if computed != id {
+            return Err(Error::BlockIdMismatch {
+                computed,
+                certified: id,
+            });
+        }
+        if link.parent_slot >= slot {
+            return Err(Error::AncestryOrder {
+                slot,
+                parent_slot: link.parent_slot,
+            });
+        }
+        (slot, id) = (link.parent_slot, link.parent_block_id);
+        path.push((slot, id));
+    }
+    Ok(path)
+}
+
 /// Finality plus one transaction: the statement a destination chain consumes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TxInput {
+    /// The certified block D. The transaction may be in D itself (`ancestry` empty) or in an
+    /// ancestor of it.
     pub finality: FinalityInput,
+    /// Links from D back to the block holding the transaction, nearest first.
+    pub ancestry: Vec<AncestryLink>,
     pub inclusion: TxInclusion,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TxOutput {
+    /// What the certificate covers: the certified block D.
     pub finality: Finality,
+    /// The block that holds the transaction (D itself when no ancestry was walked).
+    pub tx_slot: u64,
+    pub tx_block_id: Hash,
     pub tx: IncludedTx,
 }
 
 impl TxInput {
     pub fn verify(&self) -> Result<TxOutput, Error> {
         let finality = self.finality.verify()?;
-        let tx =
-            self.inclusion
-                .verify(finality.slot, &finality.block_id, finality.shred_version)?;
+        self.verify_block(finality)
+    }
+
+    /// Everything after the certificate: walk the ancestry to the transaction's block, then
+    /// find the transaction in it. `finality` must be this input's own `finality.verify()`
+    /// (the zkVM program calls the two halves separately to count their cycles).
+    pub fn verify_block(&self, finality: Finality) -> Result<TxOutput, Error> {
+        let (tx_slot, tx_block_id) =
+            verify_ancestry(finality.slot, &finality.block_id, &self.ancestry)?;
+        let tx = self
+            .inclusion
+            .verify(tx_slot, &tx_block_id, finality.shred_version)?;
         // Parse once more for structural validity of the committed bytes.
         let mut r = block::Reader::new(&tx.raw);
         tx::parse(&mut r).map_err(block::Error::from)?;
-        Ok(TxOutput { finality, tx })
+        Ok(TxOutput {
+            finality,
+            tx_slot,
+            tx_block_id,
+            tx,
+        })
     }
 }
 
 impl TxOutput {
-    /// Public values, version 1: a fixed big-endian byte layout any chain can slice.
-    /// Provisional until item 4.1.
+    /// Public values, version 2: a fixed big-endian byte layout any chain can slice. A
+    /// header says which block is final and which block holds the claims, then a list of
+    /// tagged claims. Today the only claim is a transaction (tag 1).
     ///
     /// ```text
-    /// 0     u8   layout version (= 1)
+    /// 0     u8   layout version (= 2)
     /// 1     [32] validator_set_hash
     /// 33    u16  shred_version
-    /// 35    u64  slot
-    /// 43    [32] block_id
+    /// 35    u64  certified slot (D, the block the certificate names)
+    /// 43    [32] certified block_id
     /// 75    u8   path (0 fast, 1 slow)
     /// 76    u64  signed_stake
     /// 84    u64  total_stake
-    /// 92    u32  component_start_shred
-    /// 96    u32  entry_index
-    /// 100   u32  tx_index
-    /// 104   u16  tx length
-    /// 106   ..   transaction bytes (signatures + message, exactly as in the block)
+    /// 92    u64  slot_B (the block holding the claims; = D when no ancestry was walked)
+    /// 100   [32] block_id of B
+    /// 132   u16  descendant footers opened (0 until the state proof)
+    /// 134   u16  later leader windows covered (0 until the state proof)
+    /// 136   u64  slot of the highest opened footer (= slot_B when none)
+    /// 144   u8   claim count (= 1)
+    /// 145   u8   claim tag (= 1, transaction)
+    /// 146   u32  component_start_shred
+    /// 150   u32  entry_index
+    /// 154   u32  tx_index
+    /// 158   u16  tx length
+    /// 160   ..   transaction bytes (signatures + message, exactly as in the block)
+    /// ```
+    pub fn encode(&self) -> Vec<u8> {
+        // One encoder for every proof: a transaction-only output is a claims output with one claim.
+        ClaimOutput {
+            finality: self.finality.clone(),
+            slot: self.tx_slot,
+            block_id: self.tx_block_id,
+            tx: Some(self.tx.clone()),
+            state: None,
+        }
+        .encode()
+    }
+}
+
+
+
+/// What one proof can claim about block B: any of a transaction in it and its change set.
+/// The zkVM program runs this; [`TxInput`] is the transaction-only special case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClaimInput {
+    /// The certified block D.
+    pub finality: FinalityInput,
+    /// Links from D down to B, nearest D first.
+    pub ancestry: Vec<AncestryLink>,
+    /// "This transaction, signed by these keys, is in B."
+    pub tx: Option<TxInclusion>,
+    /// "These accounts changed in B, from these values to these values."
+    pub state: Option<StateWitness>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClaimOutput {
+    pub finality: Finality,
+    /// The block the claims are about (D itself when no ancestry was walked).
+    pub slot: u64,
+    pub block_id: Hash,
+    pub tx: Option<IncludedTx>,
+    pub state: Option<StateClaim>,
+}
+
+impl ClaimInput {
+    pub fn verify(&self) -> Result<ClaimOutput, Error> {
+        let finality = self.finality.verify()?;
+        self.verify_block(finality)
+    }
+
+    /// Everything after the certificate (the program calls the two halves separately to count
+    /// their cycles).
+    pub fn verify_block(&self, finality: Finality) -> Result<ClaimOutput, Error> {
+        if self.tx.is_none() && self.state.is_none() {
+            return Err(Error::NoClaims);
+        }
+        let path = ancestry_path(finality.slot, &finality.block_id, &self.ancestry)?;
+        let (slot, block_id) = *path.last().expect("path");
+        let tx = match &self.tx {
+            Some(t) => {
+                let tx = t.verify(slot, &block_id, finality.shred_version)?;
+                let mut r = block::Reader::new(&tx.raw);
+                tx::parse(&mut r).map_err(block::Error::from)?;
+                Some(tx)
+            }
+            None => None,
+        };
+        let state = match &self.state {
+            Some(w) => Some(w.verify(slot, &block_id, finality.shred_version, &self.ancestry, &path)?),
+            None => None,
+        };
+        Ok(ClaimOutput {
+            finality,
+            slot,
+            block_id,
+            tx,
+            state,
+        })
+    }
+}
+
+impl ClaimOutput {
+    /// Public values, version 2 (layout on [`TxOutput::encode`]): the header, then each claim
+    /// with its tag. Claim 1 is a transaction, claim 2 is a change set:
+    ///
+    /// ```text
+    /// tag 2  [32] bank_hash of B | [32] diff_root | u32 leaf_count
     /// ```
     pub fn encode(&self) -> Vec<u8> {
         let f = &self.finality;
-        let mut out = Vec::with_capacity(106 + self.tx.raw.len());
-        out.push(1);
+        let (n, windows, top) = self
+            .state
+            .as_ref()
+            .map_or((0, 0, self.slot), |s| (s.confirmations, s.windows, s.top_slot));
+        let mut out = Vec::new();
+        out.push(2);
         out.extend_from_slice(&f.validator_set_hash);
         out.extend_from_slice(&f.shred_version.to_be_bytes());
         out.extend_from_slice(&f.slot.to_be_bytes());
@@ -451,11 +652,26 @@ impl TxOutput {
         });
         out.extend_from_slice(&f.signed_stake.to_be_bytes());
         out.extend_from_slice(&f.total_stake.to_be_bytes());
-        out.extend_from_slice(&self.tx.component_start_shred.to_be_bytes());
-        out.extend_from_slice(&self.tx.entry_index.to_be_bytes());
-        out.extend_from_slice(&self.tx.tx_index.to_be_bytes());
-        out.extend_from_slice(&(self.tx.raw.len() as u16).to_be_bytes());
-        out.extend_from_slice(&self.tx.raw);
+        out.extend_from_slice(&self.slot.to_be_bytes());
+        out.extend_from_slice(&self.block_id);
+        out.extend_from_slice(&n.to_be_bytes());
+        out.extend_from_slice(&windows.to_be_bytes());
+        out.extend_from_slice(&top.to_be_bytes());
+        out.push(u8::from(self.tx.is_some()) + u8::from(self.state.is_some()));
+        if let Some(tx) = &self.tx {
+            out.push(1);
+            out.extend_from_slice(&tx.component_start_shred.to_be_bytes());
+            out.extend_from_slice(&tx.entry_index.to_be_bytes());
+            out.extend_from_slice(&tx.tx_index.to_be_bytes());
+            out.extend_from_slice(&(tx.raw.len() as u16).to_be_bytes());
+            out.extend_from_slice(&tx.raw);
+        }
+        if let Some(s) = &self.state {
+            out.push(2);
+            out.extend_from_slice(&s.bank_hash);
+            out.extend_from_slice(&s.diff_root);
+            out.extend_from_slice(&s.leaf_count.to_be_bytes());
+        }
         out
     }
 }

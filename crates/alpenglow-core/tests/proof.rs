@@ -256,15 +256,22 @@ fn real_transaction_is_proven_with_one_component() {
 
     // Public values: fixed offsets, as documented on `TxOutput::encode`.
     let pv = out.encode();
-    assert_eq!(pv[0], 1);
+    assert_eq!(pv[0], 2);
     assert_eq!(&pv[1..33], &out.finality.validator_set_hash);
     assert_eq!(u64::from_be_bytes(pv[35..43].try_into().unwrap()), 46718);
     assert_eq!(&pv[43..75], &out.finality.block_id);
+    // No ancestry walked: the block holding the transaction is the certified block.
+    assert_eq!(u64::from_be_bytes(pv[92..100].try_into().unwrap()), 46718);
+    assert_eq!(&pv[100..132], &out.finality.block_id);
+    assert_eq!(u16::from_be_bytes(pv[132..134].try_into().unwrap()), 0);
+    assert_eq!(u16::from_be_bytes(pv[134..136].try_into().unwrap()), 0);
+    assert_eq!(u64::from_be_bytes(pv[136..144].try_into().unwrap()), 46718);
+    assert_eq!((pv[144], pv[145]), (1, 1), "one claim, a transaction");
     assert_eq!(
-        u16::from_be_bytes(pv[104..106].try_into().unwrap()) as usize,
+        u16::from_be_bytes(pv[158..160].try_into().unwrap()) as usize,
         out.tx.raw.len()
     );
-    assert_eq!(&pv[106..], out.tx.raw.as_slice());
+    assert_eq!(&pv[160..], out.tx.raw.as_slice());
 }
 
 // ---------- Inclusion tampering (3.4) ----------

@@ -247,7 +247,12 @@ fn run() -> Result<()> {
                 };
                 println!("wrote {}", write_shred_file(out, *slot, &shreds)?.display());
                 // The certificate for this block is in the footer of some later block: usually
-                // the next, under load a few later. Walk forward until one carries it.
+                // the next, under load a few later. But a footer certifies only the newest
+                // block that was final, so a block can be skipped over and never get one of
+                // its own (about one in four on devnet): it is final because a descendant is,
+                // and the parent links between them prove it. So walk forward until a footer
+                // carries a certificate for this block or any block after it. Every block we
+                // pass is written, so the links can be built from the files.
                 let mut next = *slot + 1;
                 let mut waited = 0;
                 let child = loop {
@@ -263,14 +268,19 @@ fn run() -> Result<()> {
                     };
                     let shreds =
                         fetch_slot_patiently(c, s).with_context(|| format!("later slot {s}"))?;
-                    let found = footer_cert_slot(&shreds) == Some(*slot);
+                    let certified = footer_cert_slot(&shreds);
+                    let found = certified.is_some_and(|c| c >= *slot);
                     println!(
                         "slot {s}: {} data shreds ({})",
                         shreds.len(),
-                        if found {
-                            format!("its footer carries the certificate for {slot}")
-                        } else {
-                            format!("its footer has no certificate for {slot}; continuing")
+                        match certified {
+                            Some(c) if c == *slot => {
+                                format!("its footer carries the certificate for {slot}")
+                            }
+                            Some(c) if c > *slot => format!(
+                                "its footer certifies slot {c}, a descendant of {slot}: that finalizes {slot} too"
+                            ),
+                            _ => format!("its footer has no certificate for {slot} or later; continuing"),
                         }
                     );
                     println!("wrote {}", write_shred_file(out, s, &shreds)?.display());
@@ -280,7 +290,7 @@ fn run() -> Result<()> {
                     next = s + 1;
                     ensure!(
                         next <= *slot + 24,
-                        "no footer within 24 blocks of {slot} carries its certificate"
+                        "no footer within 24 blocks of {slot} certifies it or a later block"
                     );
                 };
                 Ok((

@@ -17,7 +17,7 @@
 use {
     alpenglow_core::{
         fixture,
-        proof::{TxInclusion, TxInput},
+        proof::{ClaimInput, TxInclusion},
     },
     anyhow::{anyhow, bail, ensure, Context, Result},
     sp1_sdk::{
@@ -69,6 +69,8 @@ pub struct Execution {
     pub public_values: Vec<u8>,
     pub finality_cycles: u64,
     pub inclusion_cycles: u64,
+    /// Reading (deserializing) the input into the program.
+    pub read_cycles: u64,
     pub total_cycles: u64,
 }
 
@@ -114,7 +116,7 @@ impl Huginn {
     }
 
     /// Runs the program without proving. Fails unless its output equals native Rust's.
-    pub async fn execute(&self, input: &TxInput) -> Result<Execution> {
+    pub async fn execute(&self, input: &ClaimInput) -> Result<Execution> {
         let native = native_output(input)?;
         let (public, report) = self.client.execute(ELF, stdin(input)).await.map_err(|e| anyhow!("{e}"))?;
         ensure!(public.as_slice() == native.as_slice(), "zkVM public values differ from native");
@@ -123,12 +125,13 @@ impl Huginn {
             public_values: native,
             finality_cycles: tracked("finality"),
             inclusion_cycles: tracked("inclusion"),
+            read_cycles: tracked("read"),
             total_cycles: report.total_instruction_count(),
         })
     }
 
     /// Proves, then verifies the proof and checks its output equals native Rust's.
-    pub async fn prove(&self, input: &TxInput, mode: Mode) -> Result<Proven> {
+    pub async fn prove(&self, input: &ClaimInput, mode: Mode) -> Result<Proven> {
         let native = native_output(input)?;
         let t = Instant::now();
         let pk = self.client.setup(ELF).await.map_err(|e| anyhow!("{e}"))?;
@@ -180,7 +183,7 @@ impl Huginn {
     async fn prove_on_network(
         &self,
         pk: &EnvProvingKey,
-        input: &TxInput,
+        input: &ClaimInput,
         mode: Mode,
     ) -> Option<Result<SP1ProofWithPublicValues>> {
         let (EnvProver::Network(prover), EnvProvingKey::Network { pk, .. }) = (&self.client, pk) else {
@@ -211,7 +214,7 @@ impl Huginn {
     async fn prove_on_network(
         &self,
         _: &EnvProvingKey,
-        _: &TxInput,
+        _: &ClaimInput,
         _: Mode,
     ) -> Option<Result<SP1ProofWithPublicValues>> {
         None
@@ -263,13 +266,13 @@ pub fn groth16_selector() -> [u8; 4] {
     Sha256::digest(*sp1_verifier::GROTH16_VK_BYTES)[..4].try_into().expect("4 bytes")
 }
 
-fn stdin(input: &TxInput) -> SP1Stdin {
+fn stdin(input: &ClaimInput) -> SP1Stdin {
     let mut stdin = SP1Stdin::new();
     stdin.write(input);
     stdin
 }
 
-fn native_output(input: &TxInput) -> Result<Vec<u8>> {
+fn native_output(input: &ClaimInput) -> Result<Vec<u8>> {
     Ok(input.verify().map_err(|e| anyhow!("native verify: {e:?}"))?.encode())
 }
 
@@ -280,7 +283,7 @@ pub fn parse_signature(s: &str) -> Result<[u8; 64]> {
 }
 
 /// The proof input for transaction `signature` in a block file written by `ledger-dump`.
-pub fn tx_input_from_block_file(block: impl AsRef<Path>, signature: &str) -> Result<TxInput> {
+pub fn tx_input_from_block_file(block: impl AsRef<Path>, signature: &str) -> Result<ClaimInput> {
     let path = block.as_ref();
     let json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?,
@@ -289,7 +292,7 @@ pub fn tx_input_from_block_file(block: impl AsRef<Path>, signature: &str) -> Res
     let block = fixture::block_input(&json);
     let inclusion = TxInclusion::from_block(&block.data_shreds, block.parent_slot, block.parent_block_id, sig)
         .map_err(|e| anyhow!("transaction {signature} in {}: {e:?}", path.display()))?;
-    Ok(TxInput { finality: block.finality, inclusion })
+    Ok(ClaimInput { finality: block.finality, ancestry: fixture::ancestry(&json), tx: Some(inclusion), state: None })
 }
 
 #[cfg(test)]

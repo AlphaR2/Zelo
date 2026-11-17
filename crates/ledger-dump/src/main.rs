@@ -12,7 +12,7 @@ use {
     anyhow::{bail, Context, Result},
     clap::{Parser, Subcommand},
     ledger_dump::{
-        build_fixture, check_set, export, newest_certified, Certs, Ledger, Sets, ShredFiles,
+        build_fixture_via, check_set, export, newest_certified, Certs, Ledger, Sets, ShredFiles,
         ShredSource,
     },
     std::{fs, path::PathBuf},
@@ -49,6 +49,10 @@ struct Cli {
     /// Epoch length. `solana-test-validator` uses 432,000 with no warmup.
     #[arg(long, global = true, default_value_t = 432_000)]
     slots_per_epoch: u64,
+    /// Ignore the block's own certificate and certify it through this later block (testing long
+    /// ancestry chains on real data).
+    #[arg(long, global = true)]
+    via: Option<u64>,
     /// Output directory.
     #[arg(long, global = true, default_value = "fixtures/local")]
     out: PathBuf,
@@ -140,7 +144,7 @@ fn run() -> Result<()> {
         Some(s) => s,
         None => newest_certified(src.as_ref(), &certs)?,
     };
-    let built = build_fixture(src.as_ref(), slot, &sets, &certs)?;
+    let built = build_fixture_via(src.as_ref(), slot, &sets, &certs, cli.via)?;
     for line in &built.report {
         println!("{line}");
     }

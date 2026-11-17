@@ -1,0 +1,20 @@
+[package]
+name = "huginn-fill"
+version = "0.1.0"
+edition = "2021"
+description = "Huginn fill program: pays a merchant on Solana and leaves a provable message for the escrow on another chain."
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program = "2.3"
+# The outbox's logic (hash chain, PDA creation); linked in, not called through its entrypoint.
+huginn-outbox = { path = "../outbox", features = ["no-entrypoint"] }
+
+# Not part of the huginn workspace: built with `cargo build-sbf`.
+[workspace]
