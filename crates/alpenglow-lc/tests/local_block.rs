@@ -1,4 +1,4 @@
-//! A whole local block, end to end (item 2.4): raw data shreds -> FEC set roots ->
+//! A whole local block, end to end: raw data shreds -> FEC set roots ->
 //! double Merkle root, which must equal the block_id the finality certificate signed.
 //!
 //! `fixtures/local/block_44000.json` was written by `ledger-dump --slot 44000` and is
@@ -7,7 +7,7 @@
 
 use {
     alpenglow_lc::{
-        cert::{verify_footer, FooterCert},
+        cert::{FooterCert, verify_footer},
         shred::{self, Hash, Shred},
         validator_set::ValidatorSet,
     },

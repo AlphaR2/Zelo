@@ -4,7 +4,7 @@
 //! `ledger-dump --shreds <dir> --sets <set> check-set` on a full directory to see it.)
 
 use {
-    ledger_dump::{check_set, ShredFiles, ShredSource, Sets},
+    ledger_dump::{Sets, ShredFiles, ShredSource, check_set},
     std::{fs, path::PathBuf},
 };
 
@@ -16,7 +16,10 @@ fn run(set_dir: &str, min: usize) -> serde_json::Value {
     let src = ShredFiles::new(&root().join("shreds"));
     let (a, b) = src.range().unwrap();
     let slots: Vec<u64> = (a..=b).collect();
-    let sets = Sets { dir: root().join(set_dir), slots_per_epoch: 432_000 };
+    let sets = Sets {
+        dir: root().join(set_dir),
+        slots_per_epoch: 432_000,
+    };
     check_set(&src, &slots, &sets, min).unwrap()
 }
 
@@ -29,7 +32,11 @@ fn correct_set_passes_and_is_not_modified() {
     assert_eq!(r["validators"], 20);
     assert_eq!(r["certificates"]["verified"], 5);
     assert_eq!(r["set_was_modified"], false);
-    assert_eq!(fs::read(&path).unwrap(), before, "check-set must never rewrite the set");
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        before,
+        "check-set must never rewrite the set"
+    );
 }
 
 #[test]
@@ -43,5 +50,8 @@ fn wrong_set_fails() {
 #[test]
 fn too_few_certificates_fails_closed() {
     let r = run("set-flagged", 6);
-    assert_eq!(r["pass"], false, "needs at least 6 certificates but only 5 exist");
+    assert_eq!(
+        r["pass"], false,
+        "needs at least 6 certificates but only 5 exist"
+    );
 }

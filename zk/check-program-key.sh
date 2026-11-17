@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproducibility check for the SP1 program (observer finding F11).
+# Reproducibility check for the SP1 program.
 # The program key that destination contracts pin is a function of the program's ELF. This builds
 # the ELF here and again from a copy of the sources at a different path, then compares them
 # byte for byte. Same bytes = same program key, independent of where the code is checked out.
@@ -21,7 +21,7 @@ echo "1/3 building the program here ($here)"
 (cd "$here/zk/prover" && cargo build --release --quiet)
 
 echo "2/3 building it again from a copy at $copy"
-rsync -a --exclude target --exclude .git "$here/crates" "$here/zk" "$here/Cargo.toml" "$here/Cargo.lock" "$copy/"
+rsync -a --exclude target --exclude .git "$here/crates" "$here/zk" "$here/Cargo.toml" "$here/Cargo.lock" "$here/rust-toolchain.toml" "$copy/"
 # No CARGO_TARGET_DIR: the Docker build needs the target folder inside the checkout it mounts.
 (cd "$copy/zk/prover" && cargo build --release --quiet)
 

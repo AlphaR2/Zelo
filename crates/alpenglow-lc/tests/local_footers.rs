@@ -1,4 +1,4 @@
-//! Real block-footer certificates from the local Alpenglow validator (item 2.3).
+//! Real block-footer certificates from the local Alpenglow validator.
 //!
 //! Unlike the devnet genesis test, nothing here is reconstructed: the footers
 //! (`footers_sample.jsonl`, captured by plugins/footer-dump) and the validator set
@@ -7,7 +7,7 @@
 
 use {
     alpenglow_lc::{
-        cert::{self, verify_footer, Error, FooterCert},
+        cert::{self, Error, FooterCert, verify_footer},
         validator_set::ValidatorSet,
     },
     serde_json::Value,

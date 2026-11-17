@@ -1,0 +1,39 @@
+# The Solana programs. Their own workspace: they are compiled for SBF with `cargo build-sbf`.
+#
+#   interface  shared layouts and helpers: account formats, the order id, PDA creation
+#   outbox     leaves messages other chains can read through a Huginn state proof
+#   fill       a solver pays a merchant and leaves a message for the escrow on another chain
+#   tests      runs the compiled programs in Agave's runtime (Mollusk), plus the `shards` tool
+[workspace]
+resolver = "3"
+members = ["interface", "outbox", "fill", "tests"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+version = "0.1.0"
+repository = "https://github.com/AlphaR2/huginn"
+publish = false
+
+[workspace.dependencies]
+huginn-programs = { path = "interface" }
+pinocchio = { version = "0.12", default-features = false, features = ["cpi"] }
+pinocchio-system = "0.7"
+pinocchio-token = "0.8"
+solana-address = { version = "2", default-features = false }
+solana-program-log = { version = "1.2", default-features = false }
+solana-sha256-hasher = "3.1"
+solana-keccak-hasher = "3.1"
+# Tests only. Mollusk 0.17 runs Agave 4.4's program runtime.
+mollusk-svm = "0.17"
+mollusk-svm-programs-token = "0.17"
+
+# The SBF compiler (platform-tools) for every build, so a rebuild matches the deployed bytes.
+[workspace.metadata.solana]
+tools-version = "v1.57"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[profile.release]
+overflow-checks = true

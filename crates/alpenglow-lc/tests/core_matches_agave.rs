@@ -14,8 +14,8 @@ use {
     },
     serde_json::Value,
     solana_bls_signatures::{
-        keypair::Keypair, pubkey::PubkeyCompressed, signature::SignatureAffine, Signature,
-        SignatureCompressed, SignatureProjective,
+        Signature, SignatureCompressed, SignatureProjective, keypair::Keypair,
+        pubkey::PubkeyCompressed, signature::SignatureAffine,
     },
     solana_hash::Hash,
     std::num::NonZero,
@@ -333,11 +333,7 @@ fn core_and_agave_agree_on_random_certs() {
             core.is_ok(),
             "round {round}: {t:?} k={k} agave={agave} core={core:?}"
         );
-        if agave {
-            accepted += 1
-        } else {
-            rejected += 1
-        }
+        if agave { accepted += 1 } else { rejected += 1 }
     }
     // Make sure both outcomes were exercised plenty.
     assert!(

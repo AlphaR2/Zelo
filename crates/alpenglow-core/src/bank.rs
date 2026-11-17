@@ -1,7 +1,7 @@
 //! The bank hash and the accounts lattice hash: what a block's footer commits to about the
-//! chain's state (design: `docs/research/state-proof.md`, sections 4.4 and 4.5).
+//! chain's state (explained in `docs/how-it-works.md`, "Proving state").
 //!
-//! Reimplemented from Agave v4.4.1 (`runtime/src/bank.rs::hash_internal_state`,
+//! Reimplemented from Agave 4.4 (`runtime/src/bank.rs::hash_internal_state`,
 //! `accounts-db/src/accounts_db.rs::lt_hash_account`, SIMD-0215) so it needs nothing beyond
 //! SHA-256 and BLAKE3, and runs in the zkVM.
 //!

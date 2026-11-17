@@ -19,10 +19,12 @@ use {
         fixture,
         proof::{ClaimInput, TxInclusion},
     },
-    anyhow::{anyhow, bail, ensure, Context, Result},
+    anyhow::{Context, Result, anyhow, bail, ensure},
     sp1_sdk::{
+        Elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin,
         env::{EnvProver, EnvProvingKey},
-        include_elf, prelude::*, Elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin,
+        include_elf,
+        prelude::*,
     },
     std::{path::Path, str::FromStr, time::Instant},
 };
@@ -112,14 +114,23 @@ pub struct Huginn {
 
 impl Huginn {
     pub async fn from_env() -> Self {
-        Huginn { client: ProverClient::from_env().await }
+        Huginn {
+            client: ProverClient::from_env().await,
+        }
     }
 
     /// Runs the program without proving. Fails unless its output equals native Rust's.
     pub async fn execute(&self, input: &ClaimInput) -> Result<Execution> {
         let native = native_output(input)?;
-        let (public, report) = self.client.execute(ELF, stdin(input)).await.map_err(|e| anyhow!("{e}"))?;
-        ensure!(public.as_slice() == native.as_slice(), "zkVM public values differ from native");
+        let (public, report) = self
+            .client
+            .execute(ELF, stdin(input))
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+        ensure!(
+            public.as_slice() == native.as_slice(),
+            "zkVM public values differ from native"
+        );
         let tracked = |k: &str| report.cycle_tracker.get(k).copied().unwrap_or(0);
         Ok(Execution {
             public_values: native,
@@ -154,10 +165,19 @@ impl Huginn {
         let prove_secs = t.elapsed().as_secs_f64();
 
         let t = Instant::now();
-        self.client.verify(&proof, &vkey, None).map_err(|e| anyhow!("{e}"))?;
-        ensure!(proof.public_values.as_slice() == native.as_slice(), "proof public values differ from native");
+        self.client
+            .verify(&proof, &vkey, None)
+            .map_err(|e| anyhow!("{e}"))?;
+        ensure!(
+            proof.public_values.as_slice() == native.as_slice(),
+            "proof public values differ from native"
+        );
         let program_vkey = vkey.bytes32();
-        let onchain_proof = if mode == Mode::Groth16 { proof.bytes() } else { Vec::new() };
+        let onchain_proof = if mode == Mode::Groth16 {
+            proof.bytes()
+        } else {
+            Vec::new()
+        };
         // The mock prover makes no real proof (its "Groth16" is a placeholder for the mock
         // verifier), so there is nothing to check; every real prover's proof is checked.
         if mode == Mode::Groth16 && !matches!(self.client, EnvProver::Mock(_)) {
@@ -186,7 +206,8 @@ impl Huginn {
         input: &ClaimInput,
         mode: Mode,
     ) -> Option<Result<SP1ProofWithPublicValues>> {
-        let (EnvProver::Network(prover), EnvProvingKey::Network { pk, .. }) = (&self.client, pk) else {
+        let (EnvProver::Network(prover), EnvProvingKey::Network { pk, .. }) = (&self.client, pk)
+        else {
             return None;
         };
         Some(
@@ -200,7 +221,9 @@ impl Huginn {
                     .timeout(network_settings::PROOF_TIMEOUT);
                 match mode {
                     // The network does not accept core proofs.
-                    Mode::Core => bail!("the prover network does not make core proofs; use compressed or groth16"),
+                    Mode::Core => bail!(
+                        "the prover network does not make core proofs; use compressed or groth16"
+                    ),
                     Mode::Compressed => request.compressed().await,
                     Mode::Groth16 => request.groth16().await,
                 }
@@ -222,7 +245,13 @@ impl Huginn {
 
     /// The program key, without proving anything.
     pub async fn program_vkey(&self) -> Result<String> {
-        Ok(self.client.setup(ELF).await.map_err(|e| anyhow!("{e}"))?.verifying_key().bytes32())
+        Ok(self
+            .client
+            .setup(ELF)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .verifying_key()
+            .bytes32())
     }
 }
 
@@ -249,7 +278,11 @@ pub mod network_settings {
 /// same Groth16 check the Solidity verifier does, in plain Rust, against SP1 v6.10.0's pinned
 /// Groth16 key. Independent of the SDK's own `verify`, and it also confirms the proof's
 /// 4-byte selector is the one Succinct's gateways route for this SP1 version.
-fn check_onchain_bytes(onchain_proof: &[u8], public_values: &[u8], program_vkey: &str) -> Result<()> {
+fn check_onchain_bytes(
+    onchain_proof: &[u8],
+    public_values: &[u8],
+    program_vkey: &str,
+) -> Result<()> {
     sp1_verifier::Groth16Verifier::verify(
         onchain_proof,
         public_values,
@@ -263,7 +296,9 @@ fn check_onchain_bytes(onchain_proof: &[u8], public_values: &[u8], program_vkey:
 /// gateways route by it; on Base Sepolia it routes to an unfrozen verifier (checked 14 Nov 2026).
 pub fn groth16_selector() -> [u8; 4] {
     use sha2::{Digest, Sha256};
-    Sha256::digest(*sp1_verifier::GROTH16_VK_BYTES)[..4].try_into().expect("4 bytes")
+    Sha256::digest(*sp1_verifier::GROTH16_VK_BYTES)[..4]
+        .try_into()
+        .expect("4 bytes")
 }
 
 fn stdin(input: &ClaimInput) -> SP1Stdin {
@@ -273,12 +308,19 @@ fn stdin(input: &ClaimInput) -> SP1Stdin {
 }
 
 fn native_output(input: &ClaimInput) -> Result<Vec<u8>> {
-    Ok(input.verify().map_err(|e| anyhow!("native verify: {e:?}"))?.encode())
+    Ok(input
+        .verify()
+        .map_err(|e| anyhow!("native verify: {e:?}"))?
+        .encode())
 }
 
 /// A transaction signature, as base58 (what explorers show) or 128 hex characters.
 pub fn parse_signature(s: &str) -> Result<[u8; 64]> {
-    let bytes = if s.len() == 128 { hex::decode(s)? } else { bs58::decode(s).into_vec()? };
+    let bytes = if s.len() == 128 {
+        hex::decode(s)?
+    } else {
+        bs58::decode(s).into_vec()?
+    };
     bytes.try_into().ok().context("a signature is 64 bytes")
 }
 
@@ -290,9 +332,19 @@ pub fn tx_input_from_block_file(block: impl AsRef<Path>, signature: &str) -> Res
     )?;
     let sig = parse_signature(signature)?;
     let block = fixture::block_input(&json);
-    let inclusion = TxInclusion::from_block(&block.data_shreds, block.parent_slot, block.parent_block_id, sig)
-        .map_err(|e| anyhow!("transaction {signature} in {}: {e:?}", path.display()))?;
-    Ok(ClaimInput { finality: block.finality, ancestry: fixture::ancestry(&json), tx: Some(inclusion), state: None })
+    let inclusion = TxInclusion::from_block(
+        &block.data_shreds,
+        block.parent_slot,
+        block.parent_block_id,
+        sig,
+    )
+    .map_err(|e| anyhow!("transaction {signature} in {}: {e:?}", path.display()))?;
+    Ok(ClaimInput {
+        finality: block.finality,
+        ancestry: fixture::ancestry(&json),
+        tx: Some(inclusion),
+        state: None,
+    })
 }
 
 #[cfg(test)]

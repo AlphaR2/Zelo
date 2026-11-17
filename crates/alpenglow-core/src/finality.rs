@@ -1,7 +1,7 @@
 //! Alpenglow certificate verification on `bls12_381` (zkcrypto), the curve library SP1
 //! accelerates.
 //!
-//! Mirrors Agave v4.4.0 `agave_bls_cert_verify::verify_certificate`, step for step:
+//! Mirrors Agave 4.4 `agave_bls_cert_verify::verify_certificate`, step for step:
 //! 1. Decode the signer bitmap (base2 only; the cert types we accept never use base3).
 //! 2. Look up every signer's key and stake by rank; a missing rank fails.
 //! 3. Sum the keys, then check `e(agg_pk, H(payload)) == e(g1, sig)`.
@@ -12,8 +12,9 @@
 use {
     crate::shred::Hash,
     bls12_381::{
+        G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
         hash_to_curve::{ExpandMsgXmd, HashToCurve},
-        multi_miller_loop, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
+        multi_miller_loop,
     },
 };
 

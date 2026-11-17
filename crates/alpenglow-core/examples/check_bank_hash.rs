@@ -1,4 +1,4 @@
-//! S1, offline: do our bank-hash and lattice-hash formulas (src/bank.rs) reproduce what a real
+//! Do our bank-hash and lattice-hash formulas (src/bank.rs) reproduce what a real
 //! Agave validator computed?
 //!
 //! Inputs, both from `agave-ledger-tool` replaying a ledger to the same slot:
@@ -13,7 +13,7 @@
 //! checksum; the bank hash we rebuild equals Agave's; and equals the footer's.
 
 use alpenglow_core::{
-    accounts_dump::{key, Dump},
+    accounts_dump::{Dump, key},
     bank::{bank_hash, inner_hash},
     block::{self, Component, Marker},
     shred::Shred,
@@ -21,7 +21,8 @@ use alpenglow_core::{
 
 /// The bank hash in the footer of the block whose data shreds are in a `shreds_<slot>.json`.
 fn footer_bank_hash(path: &str) -> Vec<u8> {
-    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let raw: Vec<Vec<u8>> = v["data_shreds"]
         .as_array()
         .unwrap()
@@ -39,9 +40,16 @@ fn footer_bank_hash(path: &str) -> Vec<u8> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let footer = args.get(3).map(|a| if a.ends_with(".json") { footer_bank_hash(a) } else { hex::decode(a).expect("footer hex") });
+    let footer = args.get(3).map(|a| {
+        if a.ends_with(".json") {
+            footer_bank_hash(a)
+        } else {
+            hex::decode(a).expect("footer hex")
+        }
+    });
     let mut dump = Dump::parse(&std::fs::read_to_string(&args[1]).expect("accounts file"));
-    let d: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&args[2]).unwrap()).unwrap();
+    let d: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&args[2]).unwrap()).unwrap();
     let s = &d["bank_hash_details"][0];
     let h = |k: &str| -> [u8; 32] { key(s[k].as_str().unwrap()) };
     println!("slot {}: {} accounts", s["slot"], dump.accounts.len());
@@ -54,12 +62,25 @@ fn main() {
         println!("{} {name}", if pass { "PASS" } else { "FAIL" });
         pass
     };
-    let mut all = ok("accounts lattice hash checksum equals Agave's", lt.checksum() == h("accounts_lt_hash_checksum"));
-    let inner = inner_hash(&h("parent_bank_hash"), s["signature_count"].as_u64().unwrap(), &h("last_blockhash"));
+    let mut all = ok(
+        "accounts lattice hash checksum equals Agave's",
+        lt.checksum() == h("accounts_lt_hash_checksum"),
+    );
+    let inner = inner_hash(
+        &h("parent_bank_hash"),
+        s["signature_count"].as_u64().unwrap(),
+        &h("last_blockhash"),
+    );
     let ours = bank_hash(&inner, &lt);
-    all &= ok("bank hash rebuilt from the formula equals Agave's", ours == h("bank_hash"));
+    all &= ok(
+        "bank hash rebuilt from the formula equals Agave's",
+        ours == h("bank_hash"),
+    );
     if let Some(f) = footer {
-        all &= ok("bank hash equals the one in the block's own footer", ours.as_slice() == f.as_slice());
+        all &= ok(
+            "bank hash equals the one in the block's own footer",
+            ours.as_slice() == f.as_slice(),
+        );
     }
     std::process::exit(if all { 0 } else { 1 });
 }

@@ -1,6 +1,8 @@
-target/
+# Build output (every workspace)
 **/target/
-# Secrets: every env file except the committed template, keys and keypairs.
+*.so
+
+# Secrets: env files (except the template), keys, keypairs
 .env
 .env.*
 !.env.example
@@ -8,20 +10,19 @@ target/
 *.key
 id.json
 *keypair*.json
-.local-ledger/
-# Raw footer stream from the footer-dump plugin. Grows forever; commit samples only.
-fixtures/local/footers.jsonl
-zk/program/target/
-zk/prover/target/
-# zk/program/Cargo.lock is committed on purpose: the program key depends on exact dependency versions.
-fixtures/proofs/*.bin
 
-# Personal working notes (study plan, build checklist, journal). Never published.
-notes/
-scratch/
-# Generated results: proofs, logs, coverage, profiles
+# Local validator ledgers
+.local-ledger/
+test-ledger/
+
+# Generated: proofs written by the prover, the footer-dump plugin's raw stream
 fixtures/proofs/*
 !fixtures/proofs/.gitkeep
+fixtures/local/footers.jsonl
+
+# Personal notes, logs, coverage
+notes/
+scratch/
 *.log
 test-results/
 coverage/

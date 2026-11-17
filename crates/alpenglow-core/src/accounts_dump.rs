@@ -1,12 +1,12 @@
 //! Reads `agave-ledger-tool accounts --include-sysvars` output (host side only, feature
-//! `fixture`), so S1's checks and the state-proof fixtures can start from a real ledger.
+//! `fixture`), so the bank-hash check and the state fixtures can start from a real ledger.
 //!
 //! The tool prints balances as f64 SOL, which cannot hold a balance of hundreds of millions of
 //! SOL to the lamport (a local chain's faucet). [`Dump::parse`] marks such an account
 //! `imprecise`; the caller recovers its lamports by matching a known checksum
 //! ([`recover_lamports`]).
 
-use crate::bank::{account_lt_hash, LtHash};
+use crate::bank::{LtHash, account_lt_hash};
 
 pub const BASE58: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -55,7 +55,9 @@ fn lamports(sol: &str) -> u64 {
         frac.push('0');
     }
     let w: u64 = whole.parse().unwrap_or_else(|_| panic!("balance {sol:?}"));
-    let f: u64 = frac[..9].parse().unwrap_or_else(|_| panic!("balance {sol:?}"));
+    let f: u64 = frac[..9]
+        .parse()
+        .unwrap_or_else(|_| panic!("balance {sol:?}"));
     w * 1_000_000_000 + f
 }
 
@@ -82,7 +84,9 @@ impl Dump {
         let mut accounts = Vec::new();
         let mut lines = text.lines().peekable();
         while let Some(l) = lines.next() {
-            let Some(pk) = l.strip_prefix("Public Key: ") else { continue };
+            let Some(pk) = l.strip_prefix("Public Key: ") else {
+                continue;
+            };
             let mut get = |p: &str| {
                 lines
                     .next()
@@ -133,7 +137,13 @@ impl Dump {
                 assert!(big.is_none(), "more than one balance too large for f64");
                 big = Some(i);
             } else {
-                lt.add(&account_lt_hash(a.lamports, &a.data, a.executable, &a.owner, &a.pubkey));
+                lt.add(&account_lt_hash(
+                    a.lamports,
+                    &a.data,
+                    a.executable,
+                    &a.owner,
+                    &a.pubkey,
+                ));
             }
         }
         let Some(i) = big else { return (lt, None) };
@@ -142,7 +152,13 @@ impl Dump {
         let l = found.unwrap_or(a.lamports);
         self.accounts[i].lamports = l;
         self.accounts[i].imprecise = found.is_none();
-        lt.add(&account_lt_hash(l, &a.data, a.executable, &a.owner, &a.pubkey));
+        lt.add(&account_lt_hash(
+            l,
+            &a.data,
+            a.executable,
+            &a.owner,
+            &a.pubkey,
+        ));
         (lt, found)
     }
 }
@@ -152,7 +168,13 @@ impl Dump {
 pub fn recover_lamports(rest: &LtHash, a: &Parsed, checksum: &[u8; 32]) -> Option<u64> {
     (a.lamports.saturating_sub(5_000)..=a.lamports + 5_000).find(|&l| {
         let mut t = rest.clone();
-        t.add(&account_lt_hash(l, &a.data, a.executable, &a.owner, &a.pubkey));
+        t.add(&account_lt_hash(
+            l,
+            &a.data,
+            a.executable,
+            &a.owner,
+            &a.pubkey,
+        ));
         &t.checksum() == checksum
     })
 }

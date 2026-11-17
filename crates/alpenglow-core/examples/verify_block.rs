@@ -30,14 +30,22 @@ fn base58(s: &str) -> Option<Vec<u8>> {
 
 /// The first signature of the block's first transaction.
 fn first_signature(f: &serde_json::Value) -> Vec<u8> {
-    use alpenglow_core::{block::{self, Component}, shred::Shred};
-    let raw: Vec<Vec<u8>> = f["data_shreds"].as_array().unwrap().iter().map(|h| hex::decode(h.as_str().unwrap()).unwrap()).collect();
+    use alpenglow_core::{
+        block::{self, Component},
+        shred::Shred,
+    };
+    let raw: Vec<Vec<u8>> = f["data_shreds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| hex::decode(h.as_str().unwrap()).unwrap())
+        .collect();
     let shreds: Vec<Shred> = raw.iter().map(|b| Shred::parse(b).unwrap()).collect();
     for c in block::deshred(&shreds).unwrap() {
-        if let Ok(Component::Entries(entries)) = block::parse_component(&c) {
-            if let Some(t) = entries.iter().flat_map(|e| &e.transactions).next() {
-                return t.signatures[0].to_vec();
-            }
+        if let Ok(Component::Entries(entries)) = block::parse_component(&c)
+            && let Some(t) = entries.iter().flat_map(|e| &e.transactions).next()
+        {
+            return t.signatures[0].to_vec();
         }
     }
     panic!("no transaction in the block");
@@ -66,7 +74,11 @@ fn main() {
             "OK slot {} certified via slot {} ({links} link(s)) {} path, {} signature(s) checked, tx {} bytes",
             out.tx_slot,
             out.finality.slot,
-            if matches!(out.finality.path, alpenglow_core::proof::Path::Fast) { "fast" } else { "slow" },
+            if matches!(out.finality.path, alpenglow_core::proof::Path::Fast) {
+                "fast"
+            } else {
+                "slow"
+            },
             out.tx.raw[0],
             out.tx.raw.len()
         ),

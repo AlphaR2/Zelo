@@ -2,20 +2,19 @@
 name = "footer-dump"
 description = "Geyser plugin: writes each Alpenglow block footer's raw certificates to a JSON-lines file."
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 publish = false
 
-# Own workspace: a Geyser plugin is loaded into the validator process, so it is built with
-# the validator's exact compiler (rust-toolchain.toml) and its exact interface types.
+# Own workspace: the validator loads this library into its own process, so it must be built
+# with the validator's exact Rust (rust-toolchain.toml) and the exact crates it shares.
 [workspace]
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-# Versions match Agave v4.4.0's Cargo.lock. Types from these crates cross the plugin
-# boundary, so they must be the same ones the validator was built with.
+# The versions in Agave 4.4.x's Cargo.toml. These types cross into the validator.
 agave-geyser-plugin-interface = "=5.0.0"
 solana-bls-signatures = "=4.0.0"
 solana-clock = "=4.0.0"

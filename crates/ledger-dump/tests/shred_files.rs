@@ -3,7 +3,7 @@
 
 use {
     alpenglow_core::fixture,
-    ledger_dump::{build_fixture, newest_certified, Certs, Sets, ShredFiles, ShredSource},
+    ledger_dump::{Certs, Sets, ShredFiles, ShredSource, build_fixture, newest_certified},
     std::path::PathBuf,
 };
 

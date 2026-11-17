@@ -2,7 +2,7 @@
 
 use {
     crate::wire::{self, Body, Hash, Pubkey, Reply},
-    anyhow::{bail, Context, Result},
+    anyhow::{Context, Result, bail},
     solana_keypair::Keypair,
     solana_signer::Signer,
     std::{
@@ -84,7 +84,7 @@ impl Client {
                             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                         ) =>
                     {
-                        break
+                        break;
                     }
                     Err(e) => return Err(e.into()),
                 };
@@ -103,7 +103,10 @@ impl Client {
                 }
             }
         }
-        bail!("no answer from {} after {TRIES} tries (is the slot still held, and the block id right?)", self.peer)
+        bail!(
+            "no answer from {} after {TRIES} tries (is the slot still held, and the block id right?)",
+            self.peer
+        )
     }
 
     fn shred(&mut self, body: Body) -> Result<Vec<u8>> {

@@ -1,7 +1,7 @@
 //! Block fixtures from any **shred source**.
 //!
 //! Shreds are all Huginn needs: block S's shreds hold its transactions, and its child's
-//! footer holds the certificate that finalized it (item 6.5). So a data source only has to
+//! footer holds the certificate that finalized it. So a data source only has to
 //! answer "the shreds of slot S" ([`ShredSource`]); building and checking the fixture is
 //! the same for every source ([`build_fixture`]).
 //!
@@ -18,13 +18,13 @@ use {
         proof::MAX_ANCESTRY,
     },
     alpenglow_lc::{
-        cert::{verify_footer, FooterCert},
+        cert::{FooterCert, verify_footer},
         shred::{self, Kind, Shred},
         validator_set::ValidatorSet,
     },
-    anyhow::{bail, Context, Result},
-    rocksdb::{IteratorMode, Options, DB},
-    serde_json::{json, Value},
+    anyhow::{Context, Result, bail},
+    rocksdb::{DB, IteratorMode, Options},
+    serde_json::{Value, json},
     std::{
         fs,
         path::{Path, PathBuf},
@@ -47,7 +47,7 @@ pub trait ShredSource {
 
 /// An Agave ledger, opened read-only (safe while the validator runs). The `data_shred` and
 /// `code_shred` columns are keyed by `slot BE u64 | index BE u64` and hold the raw shred
-/// bytes (Agave v4.4.0 `ledger/src/blockstore/column.rs`).
+/// bytes (Agave 4.4 `ledger/src/blockstore/column.rs`).
 pub struct Ledger {
     path: PathBuf,
     db: DB,
@@ -314,13 +314,22 @@ pub struct Ancestry {
 
 /// Finds a certificate for a later block D and walks parent links from D down to `slot`,
 /// rebuilding each block's id from its shreds in the source. `None` reasons are reported.
-fn find_ancestry(src: &dyn ShredSource, certs: &Certs, slot: u64, last: u64, only: Option<u64>) -> Result<Ancestry> {
+fn find_ancestry(
+    src: &dyn ShredSource,
+    certs: &Certs,
+    slot: u64,
+    last: u64,
+    only: Option<u64>,
+) -> Result<Ancestry> {
     let mut candidates = certs.later(src, slot, last)?;
     if let Some(d) = only {
         candidates.retain(|c| c["slot"].as_u64() == Some(d));
     }
     if candidates.is_empty() {
-        bail!("no later block in {} carries a certificate yet", src.describe());
+        bail!(
+            "no later block in {} carries a certificate yet",
+            src.describe()
+        );
     }
     let mut why = String::new();
     for raw in candidates {
@@ -340,7 +349,9 @@ fn find_ancestry(src: &dyn ShredSource, certs: &Certs, slot: u64, last: u64, onl
                 .into_iter()
                 .find(|(ps, pb)| shred::block_id(&roots, *ps, pb).is_ok_and(|id| id == cur_id))
             else {
-                break Err(format!("slot {cur_slot}: no parent in its header rebuilds its block id"));
+                break Err(format!(
+                    "slot {cur_slot}: no parent in its header rebuilds its block id"
+                ));
             };
             links.push(json!({
                 "fec_roots": roots.iter().map(hex::encode).collect::<Vec<_>>(),
@@ -351,7 +362,10 @@ fn find_ancestry(src: &dyn ShredSource, certs: &Certs, slot: u64, last: u64, onl
                 break Ok(pb);
             }
             if ps < slot || links.len() >= MAX_ANCESTRY {
-                break Err(format!("the chain from slot {} passes {slot} without meeting it", cert.slot));
+                break Err(format!(
+                    "the chain from slot {} passes {slot} without meeting it",
+                    cert.slot
+                ));
             }
             (cur_slot, cur_id) = (ps, pb);
         };
@@ -361,7 +375,7 @@ fn find_ancestry(src: &dyn ShredSource, certs: &Certs, slot: u64, last: u64, onl
                     cert: raw,
                     links,
                     block_id,
-                })
+                });
             }
             Err(e) => why = format!("certificate for {}: {e}", cert.slot),
         }
@@ -582,8 +596,7 @@ pub fn build_fixture_via(
         (Certs::Shreds, None) => footer_cert(&data)?.filter(|c| c["slot"] == parent_slot),
         (Certs::Plugin(_), None) => certs.for_slot(src, parent_slot, last).ok(),
     };
-    verify_footer(&cert, shred_version, &set)
-        .with_context(|| format!("cert for {}", cert.slot))?;
+    verify_footer(&cert, shred_version, &set).with_context(|| format!("cert for {}", cert.slot))?;
     let parent_cert: Option<FooterCert> = match &raw_parent {
         Some(raw) => {
             let c: FooterCert = serde_json::from_value(raw.clone())?;
@@ -615,11 +628,20 @@ pub fn build_fixture_via(
     };
     let computed = shred::block_id(&roots, parent_slot_used, &parent_block_id)?;
     let report = vec![
-        format!("slot {slot} (epoch {epoch}): {} data + {} coding shreds, {} FEC set(s), parent {parent_slot}", data.len(), code.len(), roots.len()),
+        format!(
+            "slot {slot} (epoch {epoch}): {} data + {} coding shreds, {} FEC set(s), parent {parent_slot}",
+            data.len(),
+            code.len(),
+            roots.len()
+        ),
         format!(
             "  cert for {}{} verifies (shred version {shred_version}, from {}); parent block id from {parent_source}",
             cert.slot,
-            if parent_cert.is_some() { format!(" and for {parent_slot}") } else { String::new() },
+            if parent_cert.is_some() {
+                format!(" and for {parent_slot}")
+            } else {
+                String::new()
+            },
             match certs {
                 Certs::Shreds => "the shreds' footers",
                 Certs::Plugin(_) => "the plugin",
@@ -703,14 +725,19 @@ pub fn footer_bank_hash(data: &[Vec<u8>]) -> Result<Option<[u8; 32]>> {
 ///
 /// The set for epoch N is a snapshot, but RPC only shows live data, so a fetched set can be
 /// wrong. The only honest test is whether it verifies real certificates: a wrong set cannot.
-/// (An earlier version tried to repair the set by dropping validators until certificates
-/// passed; that fitting could accept a wrong set and is gone.)
+/// It never "repairs" a set (say, by dropping validators until certificates pass): that kind
+/// of fitting could accept a wrong set.
 ///
 /// Each of `slots` is a block whose footer certifies an earlier block; every distinct
 /// certificate that belongs to the set's epoch is verified. Returns a JSON report with
 /// `"pass"`; the caller writes it and exits non-zero on a fail. Passing needs at least
 /// `min_certs` certificates, all verifying.
-pub fn check_set(src: &dyn ShredSource, slots: &[u64], sets: &Sets, min_certs: usize) -> Result<Value> {
+pub fn check_set(
+    src: &dyn ShredSource,
+    slots: &[u64],
+    sets: &Sets,
+    min_certs: usize,
+) -> Result<Value> {
     let cluster = read_json(&sets.dir.join("cluster_info.json"))?;
     let shred_version = cluster["shred_version"].as_u64().context("shred_version")? as u16;
     let first = *slots.first().context("no slots to check against")?;
@@ -723,8 +750,12 @@ pub fn check_set(src: &dyn ShredSource, slots: &[u64], sets: &Sets, min_certs: u
     let mut seen: Vec<u64> = Vec::new();
     let (mut passed, mut failed, mut skipped) = (0usize, 0usize, 0usize);
     for &slot in slots {
-        let Ok(data) = src.data_shreds(slot) else { continue };
-        let Ok(Some(raw)) = footer_cert(&data) else { continue };
+        let Ok(data) = src.data_shreds(slot) else {
+            continue;
+        };
+        let Ok(Some(raw)) = footer_cert(&data) else {
+            continue;
+        };
         let cert: FooterCert = serde_json::from_value(raw)?;
         if seen.contains(&cert.slot) {
             continue;
@@ -740,9 +771,15 @@ pub fn check_set(src: &dyn ShredSource, slots: &[u64], sets: &Sets, min_certs: u
             Ok(_) => ("pass", None),
             Err(e) => ("fail", Some(e.to_string())),
         };
-        if result.is_ok() { passed += 1 } else { failed += 1 }
-        checks.push(json!({"certified_slot": cert.slot, "found_in_block": slot, "result": res, "error": err,
-            "has_notar_aggregate": cert.notar_aggregate.is_some()}));
+        if result.is_ok() {
+            passed += 1
+        } else {
+            failed += 1
+        }
+        checks.push(
+            json!({"certified_slot": cert.slot, "found_in_block": slot, "result": res, "error": err,
+            "has_notar_aggregate": cert.notar_aggregate.is_some()}),
+        );
     }
     let pass = failed == 0 && passed >= min_certs && set.epoch == epoch;
     Ok(json!({

@@ -9,11 +9,11 @@
 //! certified block_id.
 
 use {
-    anyhow::{bail, Context, Result},
+    anyhow::{Context, Result, bail},
     clap::{Parser, Subcommand},
     ledger_dump::{
-        build_fixture_via, check_set, export, newest_certified, Certs, Ledger, Sets, ShredFiles,
-        ShredSource,
+        Certs, Ledger, Sets, ShredFiles, ShredSource, build_fixture_via, check_set, export,
+        newest_certified,
     },
     std::{fs, path::PathBuf},
 };
@@ -109,7 +109,12 @@ fn run() -> Result<()> {
         dir: cli.sets.clone(),
         slots_per_epoch: cli.slots_per_epoch,
     };
-    if let Some(Cmd::CheckSet { check_slots, min_certs, report }) = &cli.cmd {
+    if let Some(Cmd::CheckSet {
+        check_slots,
+        min_certs,
+        report,
+    }) = &cli.cmd
+    {
         let slots: Vec<u64> = if check_slots.is_empty() {
             let (a, b) = src.range()?;
             (a..=b).collect()
@@ -117,9 +122,9 @@ fn run() -> Result<()> {
             check_slots.clone()
         };
         let rep = check_set(src.as_ref(), &slots, &sets, *min_certs)?;
-        let path = report.clone().unwrap_or_else(|| {
-            sets.dir.join(format!("check_set_{}.json", rep["epoch"]))
-        });
+        let path = report
+            .clone()
+            .unwrap_or_else(|| sets.dir.join(format!("check_set_{}.json", rep["epoch"])));
         fs::write(&path, serde_json::to_string_pretty(&rep)? + "\n")?;
         println!(
             "{} set for epoch {} ({} validators): {} certificate(s) verified, {} failed -> {}",
@@ -131,7 +136,9 @@ fn run() -> Result<()> {
             path.display()
         );
         if rep["pass"] != true {
-            bail!("the validator set does not verify the certificates (the set file was not changed)");
+            bail!(
+                "the validator set does not verify the certificates (the set file was not changed)"
+            );
         }
         return Ok(());
     }

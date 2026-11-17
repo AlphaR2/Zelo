@@ -15,9 +15,9 @@ use {
     },
     serde::Deserialize,
     solana_bls_signatures::{
+        BlsError, Signature, SignatureCompressed,
         pubkey::{PopVerified, PubkeyAffine, PubkeyCompressed},
         signature::SignatureAffine,
-        BlsError, Signature, SignatureCompressed,
     },
     solana_hash::Hash,
     std::num::NonZero,
@@ -148,9 +148,10 @@ impl FooterCert {
     ///   notarization supplies that.
     pub fn to_unverified(&self, shred_version: u16) -> Result<Vec<UnverifiedCertificate>, Error> {
         Ok(match &self.notar_aggregate {
-            None => vec![self
-                .final_aggregate
-                .to_unverified(CertificateType::FinalizeFast(self.block()), shred_version)?],
+            None => vec![
+                self.final_aggregate
+                    .to_unverified(CertificateType::FinalizeFast(self.block()), shred_version)?,
+            ],
             Some(notar) => vec![
                 notar.to_unverified(CertificateType::Notarize(self.block()), shred_version)?,
                 self.final_aggregate
@@ -218,7 +219,7 @@ mod tests {
     use {
         super::*,
         agave_votor_messages::wire::get_vote_payload_to_sign,
-        solana_bls_signatures::{keypair::Keypair, BlsError, SignatureProjective},
+        solana_bls_signatures::{BlsError, SignatureProjective, keypair::Keypair},
     };
 
     const SHRED: u16 = 7016;

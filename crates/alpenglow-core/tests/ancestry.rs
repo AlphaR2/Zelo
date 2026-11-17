@@ -8,7 +8,7 @@
 use {
     alpenglow_core::{
         fixture,
-        proof::{self, AncestryLink, Error, TxInput, MAX_ANCESTRY},
+        proof::{self, AncestryLink, Error, MAX_ANCESTRY, TxInput},
         shred::{self, Hash},
     },
     serde_json::Value,
@@ -74,14 +74,20 @@ fn chain() -> (TxInput, Hash, Hash) {
 fn a_transaction_two_blocks_below_the_certified_block_is_proven() {
     let (input, _, id_d) = chain();
     let out = input.verify().unwrap();
-    assert_eq!((out.finality.slot, out.finality.block_id), (SLOT_B + 2, id_d));
+    assert_eq!(
+        (out.finality.slot, out.finality.block_id),
+        (SLOT_B + 2, id_d)
+    );
     assert_eq!(out.tx_slot, SLOT_B);
     let rpc = json("tx_46718.json");
     assert_eq!(hex::encode(&out.tx.raw), rpc["raw"].as_str().unwrap());
 
     // The public values name both blocks: D (certified) and B (holding the transaction).
     let pv = out.encode();
-    assert_eq!(u64::from_be_bytes(pv[35..43].try_into().unwrap()), SLOT_B + 2);
+    assert_eq!(
+        u64::from_be_bytes(pv[35..43].try_into().unwrap()),
+        SLOT_B + 2
+    );
     assert_eq!(&pv[43..75], &id_d);
     assert_eq!(u64::from_be_bytes(pv[92..100].try_into().unwrap()), SLOT_B);
     assert_eq!(&pv[100..132], &out.tx_block_id);
@@ -111,17 +117,26 @@ fn a_changed_root_in_any_link_fails() {
 fn a_changed_parent_in_any_link_fails() {
     let (mut input, _, _) = chain();
     input.ancestry[0].parent_block_id[0] ^= 1;
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
     let (mut input, _, _) = chain();
     input.ancestry[1].parent_slot -= 1;
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }
 
 #[test]
 fn links_in_the_wrong_order_fail() {
     let (mut input, _, _) = chain();
     input.ancestry.swap(0, 1);
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }
 
 #[test]
@@ -129,11 +144,17 @@ fn a_walk_that_stops_early_does_not_reach_the_transactions_block() {
     // Only M is reached; the inclusion is against B, so its block_id doesn't match.
     let (mut input, _, _) = chain();
     input.ancestry.truncate(1);
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
     // And with the links dropped altogether, D is not the block holding the transaction.
     let (mut input, _, _) = chain();
     input.ancestry.clear();
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }
 
 #[test]
@@ -146,7 +167,10 @@ fn an_extra_link_past_the_transactions_block_fails() {
         parent_slot: real.inclusion.parent_slot,
         parent_block_id: real.inclusion.parent_block_id,
     });
-    assert!(matches!(input.verify().unwrap_err(), Error::NotInBlock(_) | Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::NotInBlock(_) | Error::BlockIdMismatch { .. }
+    ));
 }
 
 #[test]
@@ -234,7 +258,10 @@ fn an_uncertified_child_cannot_vouch_for_a_forged_parent() {
     // parent changes the rebuilt id, so a forged ancestor can't be slipped in.
     let (mut input, _, _) = chain();
     input.ancestry[0].parent_block_id = [0xEE; 32];
-    assert!(matches!(input.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        input.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }
 
 // ---------- A real devnet block that never got its own certificate ----------
@@ -261,10 +288,16 @@ fn a_real_devnet_transaction_in_a_block_with_no_certificate_of_its_own() {
     // Without the link, the certificate says nothing about 550.
     let mut broken = input.clone();
     broken.ancestry.clear();
-    assert!(matches!(broken.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        broken.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }
 
 fn json_devnet(file: &str) -> Value {
-    let p = format!("{}/../../fixtures/devnet/{file}", env!("CARGO_MANIFEST_DIR"));
+    let p = format!(
+        "{}/../../fixtures/devnet/{file}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }

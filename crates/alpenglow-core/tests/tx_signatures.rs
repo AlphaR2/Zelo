@@ -3,10 +3,7 @@
 //! never replayed yet are covered by the block_id. Without this check, an unsigned
 //! transaction "from" any key could sit there and be proven.
 
-use {
-    alpenglow_core::block,
-    serde_json::Value,
-};
+use {alpenglow_core::block, serde_json::Value};
 
 fn json(file: &str) -> Value {
     let p = format!("{}/../../fixtures/local/{file}", env!("CARGO_MANIFEST_DIR"));
@@ -39,7 +36,9 @@ fn first_sig(raw: &[u8]) -> [u8; 64] {
 
 fn check(raw: &[u8]) -> Result<(), alpenglow_core::tx::Error> {
     let comp = component(&[raw]);
-    let (_, _, tx) = block::find_in_component(&comp, &first_sig(raw)).unwrap().unwrap();
+    let (_, _, tx) = block::find_in_component(&comp, &first_sig(raw))
+        .unwrap()
+        .unwrap();
     tx.verify_signatures()
 }
 

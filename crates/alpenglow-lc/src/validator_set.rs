@@ -1,7 +1,7 @@
 //! The ranked validator list for one epoch.
 //!
 //! Certificate bitmaps are indexed by rank, so our ordering must match Agave's exactly.
-//! The rules mirror `BLSPubkeyToRankMap::new` in `agave/runtime/src/epoch_stakes.rs` (v4.4.0).
+//! The rules mirror `BLSPubkeyToRankMap::new` in `agave/runtime/src/epoch_stakes.rs` (Agave 4.4).
 
 use {
     serde::{Deserialize, Serialize},
@@ -60,7 +60,7 @@ impl ValidatorSet {
             .collect()
     }
 
-    /// The commitment a destination chain stores for this epoch (item 1.1). See
+    /// The commitment a destination chain stores for this epoch. See
     /// `alpenglow_core::proof::validator_set_hash` for the exact bytes hashed.
     pub fn commitment(&self) -> [u8; 32] {
         alpenglow_core::proof::validator_set_hash(&self.to_proof_validators())
@@ -247,8 +247,16 @@ mod tests {
             vote[..4].copy_from_slice(&i.to_le_bytes());
             let mut node = [1u8; 32];
             node[..4].copy_from_slice(&i.to_le_bytes());
-            Candidate { vote_pubkey: vote, node_pubkey: node, stake: 1 + i as u64, bls_pubkey: Some(PubkeyCompressed::from(&*kp.public).0) }
+            Candidate {
+                vote_pubkey: vote,
+                node_pubkey: node,
+                stake: 1 + i as u64,
+                bls_pubkey: Some(PubkeyCompressed::from(&*kp.public).0),
+            }
         });
-        assert_eq!(ValidatorSet::from_candidates(1, cands).entries.len(), MAX_VALIDATORS);
+        assert_eq!(
+            ValidatorSet::from_candidates(1, cands).entries.len(),
+            MAX_VALIDATORS
+        );
     }
 }

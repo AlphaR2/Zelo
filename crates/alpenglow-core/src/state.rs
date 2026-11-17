@@ -1,4 +1,4 @@
-//! Proving what a Solana block changed (design: `docs/research/state-proof.md`, section 5).
+//! Proving what a Solana block changed (explained in `docs/how-it-works.md`, "Proving state").
 //!
 //! The statement: "block B is final, and these accounts changed in it, from these values to
 //! these values." Solana signs the block (the certificate), the block's footer carries its bank
@@ -7,24 +7,24 @@
 //! 1. B is final: a certificate for B or a descendant D, and the parent links between them
 //!    (`proof::verify_ancestry`).
 //! 2. B's footer is read from B's own shreds, at the only position replay accepts: the
-//!    second-to-last component, followed by the one tick that ends the slot (5.2).
+//!    second-to-last component, followed by the one tick that ends the slot.
 //! 3. The bank hash opens: the footer's hash is `sha256(inner_B | L_B)` and `inner_B` commits
-//!    to the parent's bank hash, which commits to `L_P` (5.3).
+//!    to the parent's bank hash, which commits to `L_P`.
 //! 4. The change set opens: `L_P` plus every changed account's new hash minus its old hash
-//!    equals `L_B` (5.4). A false change set would be a collision in the lattice hash.
-//! 5. The change set is committed as a Merkle tree, the *diff root* (5.5), so one proof serves
+//!    equals `L_B`. A false change set would be a collision in the lattice hash.
+//! 5. The change set is committed as a Merkle tree, the *diff root*, so one proof serves
 //!    every account the block changed, and "X did not change" is provable too.
-//! 6. Optionally the footers of descendants of B are opened as well (5.1b). B's own footer
+//! 6. Optionally the footers of descendants of B are opened as well. B's own footer
 //!    sits behind the 20-byte Merkle nodes of the shred tree (about 2^80 to forge by the
 //!    block's own leader); a descendant's bank hash commits to B's with full 32-byte hashes,
 //!    so a forger would have to lead every block up to the highest footer opened.
 
 use {
     crate::{
-        bank::{bank_hash, inner_hash, LtHash, LT_ELEMENTS},
+        bank::{LT_ELEMENTS, LtHash, bank_hash, inner_hash},
         block::{self, Component, Marker},
         proof::{AncestryLink, MAX_ANCESTRY},
-        shred::{Hash, Kind, Shred, DATA_SHREDS_PER_FEC_SET},
+        shred::{DATA_SHREDS_PER_FEC_SET, Hash, Kind, Shred},
     },
     serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
@@ -134,7 +134,7 @@ impl BankParts {
     }
 }
 
-/// A descendant of B whose footer is opened too (5.1b).
+/// A descendant of B whose footer is opened too.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Confirmation {
     pub footer: FooterRun,
@@ -196,7 +196,13 @@ fn node(l: &Hash, r: &Hash) -> Hash {
 fn level_up(level: &[Hash]) -> Vec<Hash> {
     level
         .chunks(2)
-        .map(|p| if p.len() == 2 { node(&p[0], &p[1]) } else { p[0] })
+        .map(|p| {
+            if p.len() == 2 {
+                node(&p[0], &p[1])
+            } else {
+                p[0]
+            }
+        })
         .collect()
 }
 
@@ -214,7 +220,11 @@ pub fn merkle_root(leaves: &[Hash]) -> Hash {
 
 /// `sha256(0x02 | leaf_count u32 LE | merkle_root)`: what goes in the public values.
 pub fn diff_root(leaves: &[Hash]) -> Hash {
-    sha(&[&[0x02], &(leaves.len() as u32).to_le_bytes(), &merkle_root(leaves)])
+    sha(&[
+        &[0x02],
+        &(leaves.len() as u32).to_le_bytes(),
+        &merkle_root(leaves),
+    ])
 }
 
 /// The sibling hashes from leaf `index` to the root, bottom first. A level's last node with
@@ -243,7 +253,11 @@ pub fn root_from_path(leaf: &Hash, mut index: usize, count: usize, path: &[Hash]
     while width > 1 {
         if (index ^ 1) < width {
             let sib = it.next()?;
-            cur = if index.is_multiple_of(2) { node(&cur, sib) } else { node(sib, &cur) };
+            cur = if index.is_multiple_of(2) {
+                node(&cur, sib)
+            } else {
+                node(sib, &cur)
+            };
         }
         index /= 2;
         width = width.div_ceil(2);
@@ -265,7 +279,8 @@ fn in_block(s: &Shred, slot: u64, version: u16, roots: &[Hash]) -> Result<(), Er
         && (s.fec_set_index() as usize).is_multiple_of(DATA_SHREDS_PER_FEC_SET)
         && s.erasure_index() < DATA_SHREDS_PER_FEC_SET
         && roots.get(set) == Some(&s.merkle_root()?);
-    ok.then_some(()).ok_or(Error::FooterRun("a shred is not in the block"))
+    ok.then_some(())
+        .ok_or(Error::FooterRun("a shred is not in the block"))
 }
 
 /// The bank hash in the footer of the block `(slot, fec_roots)`: found in its last two
@@ -279,7 +294,9 @@ fn footer_bank_hash(
     let boundary = Shred::parse(&run.boundary_shred)?;
     in_block(&boundary, slot, version, roots)?;
     if !boundary.data_complete() {
-        return Err(Error::FooterRun("the shred before the run does not end a component"));
+        return Err(Error::FooterRun(
+            "the shred before the run does not end a component",
+        ));
     }
     let shreds = run
         .shreds
@@ -288,7 +305,9 @@ fn footer_bank_hash(
         .collect::<Result<Vec<_>, _>>()?;
     let first = shreds.first().ok_or(Error::FooterRun("no shreds"))?;
     if boundary.index().checked_add(1) != Some(first.index()) {
-        return Err(Error::FooterRun("the run does not start right after its boundary"));
+        return Err(Error::FooterRun(
+            "the run does not start right after its boundary",
+        ));
     }
     for s in &shreds {
         in_block(s, slot, version, roots)?;
@@ -299,15 +318,21 @@ fn footer_bank_hash(
     // `deshred` checks the run is consecutive and ends on a DATA_COMPLETE shred.
     let components = block::deshred(&shreds)?;
     let [footer, tick] = components.as_slice() else {
-        return Err(Error::FooterRun("expected exactly a footer and the closing tick"));
+        return Err(Error::FooterRun(
+            "expected exactly a footer and the closing tick",
+        ));
     };
     let Component::Marker(Marker::Footer(bytes)) = block::parse_component(footer)? else {
         return Err(Error::FooterRun("the first component is not a footer"));
     };
     match block::parse_component(tick)? {
-        Component::Entries(e)
-            if matches!(e.as_slice(), [t] if t.num_hashes == 1 && t.transactions.is_empty()) => {}
-        _ => return Err(Error::FooterRun("the last component is not the single closing tick")),
+        Component::Entries(e) if matches!(e.as_slice(), [t] if t.num_hashes == 1 && t.transactions.is_empty()) =>
+            {}
+        _ => {
+            return Err(Error::FooterRun(
+                "the last component is not the single closing tick",
+            ));
+        }
     }
     Ok(block::parse_footer(bytes)?.bank_hash)
 }

@@ -2,7 +2,7 @@
 name = "huginn-prover"
 description = "Proves that a Solana transaction is in a finalized Alpenglow block (SP1). Library for destination apps, plus the `huginn` CLI."
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 
 # Own workspace: sp1-sdk is large, and the main workspace shouldn't build it.

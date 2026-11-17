@@ -2,8 +2,7 @@
 //!
 //! We can't fetch the epoch-1167 validator set (RPC only serves current stakes), so the
 //! rank map is reconstructed:
-//! - Signer identities: known from item 0.7 (`find_genesis_signers` found them among
-//!   today's epoch-1198 keys).
+//! - Signer identities: `find_genesis_signers` found them among the epoch-1198 keys.
 //! - Signer positions: assumed in the same relative order as today. Signature checks are
 //!   order-independent, so this choice can't make a bad signature pass.
 //! - Stakes: today's, as a stand-in. So the stake-threshold result here is approximate;
@@ -23,7 +22,7 @@ const SHRED_VERSION: u16 = 7016; // fixtures/devnet/cluster_info.json
 
 /// Bit positions set in the genesis bitmap (epoch 1167, 17 validators).
 const GENESIS_RANKS: [usize; 11] = [0, 1, 2, 3, 4, 7, 9, 10, 14, 15, 16];
-/// The same 11 validators' ranks in today's set (output of item 0.7).
+/// The same 11 validators' ranks in today's set (found by `find_genesis_signers`).
 const TODAY_RANKS: [usize; 11] = [0, 1, 2, 3, 4, 7, 10, 11, 17, 18, 19];
 
 fn fixture(path: &str) -> Value {

@@ -1,33 +1,25 @@
 [package]
 name = "alpenglow-core"
-description = "Alpenglow finality and block_id checks in pure Rust (no Agave, no C), so they run inside the SP1 zkVM."
+description = "The verifier: Alpenglow finality, shreds and block_id, transactions and block state, in plain Rust so it runs inside the SP1 zkVM."
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+repository.workspace = true
 
 [dependencies]
-# SP1 accelerates exactly this crate and version: patched to sp1-patches/bls12_381
-# patch-0.8.0-sp1-6.10.0 here (workspace [patch]) and in zk/program. `experimental` =
-# hash_to_curve, which in the patched crate takes a digest-0.10 hasher (sha2 0.10).
-bls12_381 = { version = "=0.8.0", default-features = false, features = ["groups", "pairings", "alloc", "experimental"] }
+# `experimental` = hash_to_curve; in SP1's patched crate it takes a sha2 0.10 hasher.
+bls12_381 = { workspace = true, features = ["groups", "pairings", "alloc", "experimental"] }
 sha2.workspace = true
-# The accounts lattice hash is BLAKE3 with 2,048 bytes of output (SIMD-0215). Portable code
-# only: it runs in the zkVM too.
-blake3 = { version = "1", default-features = false }
-# Transaction signatures (strict verification, as Agave's sigverify does). Plain crates.io
-# build for now; SP1 has a patched curve25519-dalek that runs on a precompile, which would
-# cut the cycles by two orders of magnitude (see docs/research/state-proof.md, S0b).
-ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
+blake3.workspace = true
+ed25519-dalek.workspace = true
 thiserror.workspace = true
 serde.workspace = true
-# Feature `fixture`: build inputs from JSON fixtures or synthetic sets (host side only).
 serde_json = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 
 [features]
-# On by default so tests, examples and host tools have it, and so this crate never has to list
-# itself as a dev-dependency (that self-reference confused rust-analyzer: "cyclic deps").
-# The SP1 program turns it off (`default-features = false` in zk/program/Cargo.toml).
+# `fixture`: read inputs from JSON fixtures (host only). On by default for tests and tools;
+# the SP1 program turns it off.
 default = ["fixture"]
 fixture = ["dep:serde_json", "dep:hex"]
 

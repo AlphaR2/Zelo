@@ -1,0 +1,30 @@
+[package]
+name = "huginn-programs-tests"
+description = "Runs the compiled outbox and fill programs in Agave's runtime (Mollusk), and the `shards` tool."
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "shards"
+path = "src/shards.rs"
+
+[dependencies]
+huginn-programs.workspace = true
+solana-address = { workspace = true, features = ["decode", "curve25519"] }
+
+[dev-dependencies]
+mollusk-svm.workspace = true
+mollusk-svm-programs-token.workspace = true
+solana-account = "5"
+solana-instruction = "4"
+solana-pubkey = "4"
+solana-program-pack = "3"
+spl-token-interface = "3"
+solana-program-error = "3"
+solana-program-option = "3"
+
+[lints]
+workspace = true

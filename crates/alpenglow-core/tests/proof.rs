@@ -1,7 +1,7 @@
 //! The three statements in `proof.rs`, on real local data and synthetic validator sets.
-//! - Finality (items 1.2, 1.3): both paths, and the attacks a verifier must refuse.
-//! - Whole block (2.4 shape): shreds rebuild the certified block_id.
-//! - One transaction (3.3, 3.4): found with only its component's shreds; every tamper fails.
+//! - Finality: both paths, and the attacks a verifier must refuse.
+//! - Whole block: shreds rebuild the certified block_id.
+//! - One transaction: found with only its component's shreds; every tamper fails.
 
 use {
     alpenglow_core::{
@@ -37,7 +37,7 @@ fn bad_sig() -> Error {
     Error::Finality(finality::Error::VerifySig)
 }
 
-// ---------- Finality (1.2) ----------
+// ---------- Finality ----------
 
 #[test]
 fn real_fast_path_cert_verifies() {
@@ -71,7 +71,7 @@ fn synthetic_fast_and_slow_paths_verify() {
     }
 }
 
-// ---------- Adversarial finality (1.3) ----------
+// ---------- Adversarial finality ----------
 
 #[test]
 fn slow_path_trap_finalize_alone_proves_nothing_about_the_block() {
@@ -234,7 +234,7 @@ fn whole_blocks_verify() {
     }
 }
 
-// ---------- One transaction (3.3) ----------
+// ---------- One transaction ----------
 
 #[test]
 fn real_transaction_is_proven_with_one_component() {
@@ -274,7 +274,7 @@ fn real_transaction_is_proven_with_one_component() {
     assert_eq!(&pv[160..], out.tx.raw.as_slice());
 }
 
-// ---------- Inclusion tampering (3.4) ----------
+// ---------- Inclusion tampering ----------
 
 #[test]
 fn changed_byte_in_any_component_shred_fails() {

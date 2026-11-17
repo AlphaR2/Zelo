@@ -1,0 +1,22 @@
+[package]
+name = "huginn-outbox"
+description = "Lets a wallet or a program leave messages for other chains, provable from a Solana block."
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+huginn-programs.workspace = true
+pinocchio.workspace = true
+solana-program-log.workspace = true
+
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+solana-address = { workspace = true, features = ["curve25519"] }
+
+[lints]
+workspace = true

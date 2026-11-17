@@ -2,7 +2,7 @@
 //! them to `ledger-dump --shreds` for the certificate and inclusion checks.
 
 use {
-    anyhow::{bail, ensure, Context, Result},
+    anyhow::{Context, Result, bail, ensure},
     clap::{Parser, Subcommand},
     shred_repair::{
         client::Client, fetch_block, fetch_shape, fetch_slot, footer_cert_slot, write_shred_file,
@@ -14,7 +14,13 @@ use {
 #[command(about = "Fetch Solana shreds with Agave's repair protocol (no node, no paid feed)")]
 struct Cli {
     /// JSON-RPC URL, used to find a peer's repair address and identity (`getClusterNodes`)
-    #[arg(long, env = "SOLANA_RPC", hide_env_values = true, default_value = "http://127.0.0.1:8899", global = true)]
+    #[arg(
+        long,
+        env = "SOLANA_RPC",
+        hide_env_values = true,
+        default_value = "http://127.0.0.1:8899",
+        global = true
+    )]
     rpc: String,
     /// A peer's `serveRepair` address. With --peer-id, skips the RPC lookup.
     #[arg(long, global = true)]
@@ -67,12 +73,23 @@ struct Peer {
     id: [u8; 32],
 }
 
+/// One JSON-RPC request. Errors name the host only: the URL can carry an API key.
+fn rpc_call(rpc: &str, body: serde_json::Value) -> Result<serde_json::Value> {
+    ureq::post(rpc)
+        .send_json(body)
+        .and_then(|mut r| r.body_mut().read_json())
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "RPC request to {} failed: {}",
+                redact::Host(rpc),
+                redact::redact_text(&e.to_string())
+            )
+        })
+}
+
 fn peers(rpc: &str) -> Result<Vec<Peer>> {
     let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getClusterNodes"});
-    let v: serde_json::Value = ureq::post(rpc)
-        .send_json(body)
-        .map_err(|e| anyhow::anyhow!("RPC request to {} failed: {}", redact::Host(rpc), redact::redact_text(&e.to_string())))?
-        .into_json()?;
+    let v: serde_json::Value = rpc_call(rpc, body)?;
     let mut out = Vec::new();
     for n in v["result"].as_array().context("getClusterNodes result")? {
         let (Some(addr), Some(id)) = (n["serveRepair"].as_str(), n["pubkey"].as_str()) else {
@@ -118,10 +135,7 @@ fn candidates(cli: &Cli) -> Result<Vec<Peer>> {
 /// Slots with a block, from `from` to `to`, per the cluster's RPC.
 fn produced(rpc: &str, from: u64, to: u64) -> Result<Vec<u64>> {
     let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlocks","params":[from, to, {"commitment":"confirmed"}]});
-    let v: serde_json::Value = ureq::post(rpc)
-        .send_json(body)
-        .map_err(|e| anyhow::anyhow!("RPC request to {} failed: {}", redact::Host(rpc), redact::redact_text(&e.to_string())))?
-        .into_json()?;
+    let v: serde_json::Value = rpc_call(rpc, body)?;
     Ok(v["result"]
         .as_array()
         .map(|a| a.iter().filter_map(|x| x.as_u64()).collect())
@@ -194,7 +208,11 @@ fn run() -> Result<()> {
                     .into_iter()
                     .take(*count as usize)
                     .collect();
-                ensure!(!slots.is_empty(), "no blocks from {from} on {}", redact::Host(&cli.rpc));
+                ensure!(
+                    !slots.is_empty(),
+                    "no blocks from {from} on {}",
+                    redact::Host(&cli.rpc)
+                );
                 for s in slots {
                     let shreds = fetch_slot_patiently(c, s)?;
                     let cert = match footer_cert_slot(&shreds) {
@@ -217,7 +235,9 @@ fn run() -> Result<()> {
             let s = with_peer(&cli, |c, _| fetch_shape(c, *slot, id))?;
             println!(
                 "slot {slot}: {} FEC sets, parent slot {} ({}), every root proven against the block id",
-                s.fec_set_count, s.parent_slot, hex::encode(s.parent_block_id)
+                s.fec_set_count,
+                s.parent_slot,
+                hex::encode(s.parent_block_id)
             );
         }
         Cmd::Fetch {
@@ -280,7 +300,9 @@ fn run() -> Result<()> {
                             Some(c) if c > *slot => format!(
                                 "its footer certifies slot {c}, a descendant of {slot}: that finalizes {slot} too"
                             ),
-                            _ => format!("its footer has no certificate for {slot} or later; continuing"),
+                            _ => format!(
+                                "its footer has no certificate for {slot} or later; continuing"
+                            ),
                         }
                     );
                     println!("wrote {}", write_shred_file(out, s, &shreds)?.display());

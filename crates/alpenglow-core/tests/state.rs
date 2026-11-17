@@ -14,7 +14,10 @@ use {
 };
 
 fn json() -> Value {
-    let p = format!("{}/../../fixtures/local/state_156070.json", env!("CARGO_MANIFEST_DIR"));
+    let p = format!(
+        "{}/../../fixtures/local/state_156070.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
@@ -27,7 +30,10 @@ fn input(depth: usize, confirm: usize) -> (ClaimInput, StateFixture) {
         shred_version: fx.shred_version,
         slot: fx.certified.0,
         block_id: fx.certified.1,
-        final_aggregate: alpenglow_core::proof::Aggregate { signature: vec![], bitmap: vec![] },
+        final_aggregate: alpenglow_core::proof::Aggregate {
+            signature: vec![],
+            bitmap: vec![],
+        },
         notar_aggregate: None,
     };
     let input = ClaimInput {
@@ -39,7 +45,11 @@ fn input(depth: usize, confirm: usize) -> (ClaimInput, StateFixture) {
     (input, fx)
 }
 
-fn with(depth: usize, confirm: usize, f: impl FnOnce(&mut StateWitness)) -> Result<state::StateClaim, Error> {
+fn with(
+    depth: usize,
+    confirm: usize,
+    f: impl FnOnce(&mut StateWitness),
+) -> Result<state::StateClaim, Error> {
     let (mut i, _) = input(depth, confirm);
     f(i.state.as_mut().unwrap());
     i.verify().map(|o| o.state.unwrap())
@@ -60,7 +70,10 @@ fn the_real_block_proves_its_change_set() {
     let out = i.verify().unwrap();
     assert_eq!((out.slot, out.block_id), (fx.slot, fx.block_id));
     let s = out.state.unwrap();
-    assert_eq!(hex::encode(s.bank_hash), json()["bank_hash"].as_str().unwrap());
+    assert_eq!(
+        hex::encode(s.bank_hash),
+        json()["bank_hash"].as_str().unwrap()
+    );
     // Six accounts changed, four of them sysvars; every one really differs, so every one is a leaf.
     assert_eq!(fx.witness.changes.len(), 6);
     assert_eq!(s.leaf_count, 6);
@@ -81,7 +94,10 @@ fn descendants_footers_confirm_it_and_leader_windows_are_counted() {
     assert_eq!((s.confirmations, s.windows, s.top_slot), (1, 0, 156071));
     // The same claim whatever the depth: confirmations add evidence, not content.
     let plain = input(0, 0).0.verify().unwrap().state.unwrap();
-    assert_eq!((s.bank_hash, s.diff_root), (plain.bank_hash, plain.diff_root));
+    assert_eq!(
+        (s.bank_hash, s.diff_root),
+        (plain.bank_hash, plain.diff_root)
+    );
 }
 
 #[test]
@@ -111,23 +127,39 @@ fn an_account_opens_from_the_diff_root_and_an_unchanged_one_is_provably_absent()
     let (i, fx) = input(0, 0);
     let root = i.verify().unwrap().state.unwrap().diff_root;
     let changes = &fx.witness.changes;
-    let leaves: Vec<Hash> = changes.iter().map(|c| state::diff_leaf(&c.pubkey, &c.pre, &c.post)).collect();
+    let leaves: Vec<Hash> = changes
+        .iter()
+        .map(|c| state::diff_leaf(&c.pubkey, &c.pre, &c.post))
+        .collect();
     for (idx, c) in changes.iter().enumerate() {
         let path = state::merkle_path(&leaves, idx);
         let leaf = state::diff_leaf(&c.pubkey, &c.pre, &c.post);
-        assert_eq!(state::root_from_path(&leaf, idx, leaves.len(), &path), Some(root), "leaf {idx}");
+        assert_eq!(
+            state::root_from_path(&leaf, idx, leaves.len(), &path),
+            Some(root),
+            "leaf {idx}"
+        );
     }
     // A wrong index, a short path, a long path and a changed leaf all fail.
     let path = state::merkle_path(&leaves, 2);
     let leaf = leaves[2];
-    assert_ne!(state::root_from_path(&leaf, 3, leaves.len(), &path), Some(root));
-    assert_eq!(state::root_from_path(&leaf, 2, leaves.len(), &path[..path.len() - 1]), None);
+    assert_ne!(
+        state::root_from_path(&leaf, 3, leaves.len(), &path),
+        Some(root)
+    );
+    assert_eq!(
+        state::root_from_path(&leaf, 2, leaves.len(), &path[..path.len() - 1]),
+        None
+    );
     let mut long = path.clone();
     long.push([0; 32]);
     assert_eq!(state::root_from_path(&leaf, 2, leaves.len(), &long), None);
     let mut other = leaf;
     other[0] ^= 1;
-    assert_ne!(state::root_from_path(&other, 2, leaves.len(), &path), Some(root));
+    assert_ne!(
+        state::root_from_path(&other, 2, leaves.len(), &path),
+        Some(root)
+    );
     // Non-membership: an address between two adjacent leaves' keys is not in the tree. Here
     // the keys are sorted, so adjacency of indices i, i+1 with key_i < x < key_{i+1} is checkable.
     assert!(changes.windows(2).all(|w| w[0].pubkey < w[1].pubkey));
@@ -141,7 +173,11 @@ fn the_diff_tree_is_well_defined_for_every_size() {
         let root = state::diff_root(&leaves);
         for i in 0..n {
             let path = state::merkle_path(&leaves, i);
-            assert_eq!(state::root_from_path(&leaves[i], i, n, &path), Some(root), "n={n} i={i}");
+            assert_eq!(
+                state::root_from_path(&leaves[i], i, n, &path),
+                Some(root),
+                "n={n} i={i}"
+            );
         }
     }
     // The empty tree has a zero Merkle root, and its diff root still commits to the count 0.
@@ -149,7 +185,7 @@ fn the_diff_tree_is_well_defined_for_every_size() {
     assert_ne!(state::diff_root(&[]), state::diff_root(&[leaf(1)]));
 }
 
-// ---------- the attacks (state-proof.md 6.2) ----------
+// ---------- attacks (listed in docs/security.md) ----------
 
 #[test]
 fn a_changed_value_breaks_the_lattice_sum() {
@@ -184,9 +220,18 @@ fn an_account_that_did_not_change_cannot_become_a_leaf() {
     let (i, _) = input(0, 0);
     let honest = i.verify().unwrap().state.unwrap();
     let r = with(0, 0, |w| {
-        let fake = Account { lamports: 5, data: vec![1, 2, 3], executable: false, owner: [9; 32] };
+        let fake = Account {
+            lamports: 5,
+            data: vec![1, 2, 3],
+            executable: false,
+            owner: [9; 32],
+        };
         // A key after every real one (real keys here are below 0xFF..).
-        w.changes.push(AccountChange { pubkey: [0xFF; 32], pre: Some(fake.clone()), post: Some(fake) });
+        w.changes.push(AccountChange {
+            pubkey: [0xFF; 32],
+            pre: Some(fake.clone()),
+            post: Some(fake),
+        });
     })
     .unwrap();
     assert_eq!(r, honest);
@@ -197,9 +242,25 @@ fn the_same_account_twice_is_refused() {
     // The "telescoping" trick: (X: real -> fake) then (X: fake -> real) sums to the true change.
     let r = with(0, 0, |w| {
         let c = w.changes[0].clone();
-        let fake = Account { lamports: 1, data: vec![7], executable: false, owner: [1; 32] };
-        w.changes[0] = AccountChange { pubkey: c.pubkey, pre: c.pre.clone(), post: Some(fake.clone()) };
-        w.changes.insert(1, AccountChange { pubkey: c.pubkey, pre: Some(fake), post: c.post });
+        let fake = Account {
+            lamports: 1,
+            data: vec![7],
+            executable: false,
+            owner: [1; 32],
+        };
+        w.changes[0] = AccountChange {
+            pubkey: c.pubkey,
+            pre: c.pre.clone(),
+            post: Some(fake.clone()),
+        };
+        w.changes.insert(
+            1,
+            AccountChange {
+                pubkey: c.pubkey,
+                pre: Some(fake),
+                post: c.post,
+            },
+        );
     });
     assert_eq!(refused(r), StateError::Unsorted(1));
 }
@@ -217,7 +278,12 @@ fn a_zero_lamport_account_counts_as_absent() {
     // sum then differs (the real post is gone), so it is refused; and a zero-lamport pre or
     // post gives the same leaf digest as None.
     assert_eq!(
-        state::account_digest(&Some(Account { lamports: 0, data: vec![1], executable: true, owner: [3; 32] })),
+        state::account_digest(&Some(Account {
+            lamports: 0,
+            data: vec![1],
+            executable: true,
+            owner: [3; 32]
+        })),
         state::account_digest(&None)
     );
     let r = with(0, 0, |w| {
@@ -230,24 +296,47 @@ fn a_zero_lamport_account_counts_as_absent() {
 #[test]
 fn a_wrong_parent_lattice_hash_or_inner_hash_breaks_the_bank_hash() {
     let slot = 156070;
-    assert_eq!(refused(with(0, 0, |w| w.lt_parent[7] ^= 1)), StateError::BankHashMismatch(slot));
-    assert_eq!(refused(with(0, 0, |w| w.inner_parent[0] ^= 1)), StateError::BankHashMismatch(slot));
-    assert_eq!(refused(with(0, 0, |w| w.block.signature_count += 1)), StateError::BankHashMismatch(slot));
-    assert_eq!(refused(with(0, 0, |w| w.block.last_blockhash[0] ^= 1)), StateError::BankHashMismatch(slot));
-    assert_eq!(refused(with(0, 0, |w| w.block.lt_hash[100] ^= 1)), StateError::BankHashMismatch(slot));
+    assert_eq!(
+        refused(with(0, 0, |w| w.lt_parent[7] ^= 1)),
+        StateError::BankHashMismatch(slot)
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.inner_parent[0] ^= 1)),
+        StateError::BankHashMismatch(slot)
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.block.signature_count += 1)),
+        StateError::BankHashMismatch(slot)
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.block.last_blockhash[0] ^= 1)),
+        StateError::BankHashMismatch(slot)
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.block.lt_hash[100] ^= 1)),
+        StateError::BankHashMismatch(slot)
+    );
 }
 
 #[test]
 fn a_lattice_hash_of_the_wrong_length_is_refused() {
-    assert_eq!(refused(with(0, 0, |w| w.lt_parent.pop().map(|_| ()).unwrap())), StateError::LtLength(1023));
-    assert_eq!(refused(with(0, 0, |w| w.block.lt_hash.push(0))), StateError::LtLength(1025));
+    assert_eq!(
+        refused(with(0, 0, |w| w.lt_parent.pop().map(|_| ()).unwrap())),
+        StateError::LtLength(1023)
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.block.lt_hash.push(0))),
+        StateError::LtLength(1025)
+    );
 }
 
 #[test]
 fn a_footer_from_another_block_is_refused() {
     // The footer run of B's child, offered for B: its shreds are not in B.
     let other = fixture::state_fixture(&json(), 2, 2);
-    let r = with(0, 0, |w| w.footer = other.witness.confirmations[0].footer.clone());
+    let r = with(0, 0, |w| {
+        w.footer = other.witness.confirmations[0].footer.clone()
+    });
     assert!(matches!(refused(r), StateError::FooterRun(_)));
 }
 
@@ -263,9 +352,14 @@ fn a_footer_run_must_end_the_slot_and_start_at_a_boundary() {
     let r = with(0, 0, |w| {
         w.footer.shreds.remove(0);
     });
-    assert_eq!(refused(r), StateError::FooterRun("the run does not start right after its boundary"));
+    assert_eq!(
+        refused(r),
+        StateError::FooterRun("the run does not start right after its boundary")
+    );
     // A boundary that is not the end of a component.
-    let r = with(0, 0, |w| w.footer.boundary_shred = w.footer.shreds[0].clone());
+    let r = with(0, 0, |w| {
+        w.footer.boundary_shred = w.footer.shreds[0].clone()
+    });
     assert!(matches!(refused(r), StateError::FooterRun(_)));
 }
 
@@ -280,18 +374,36 @@ fn a_changed_footer_shred_is_not_in_the_block() {
 
 #[test]
 fn the_blocks_own_roots_must_rebuild_its_id() {
-    assert_eq!(refused(with(0, 0, |w| w.fec_roots[0][0] ^= 1)), StateError::BlockIdMismatch);
-    assert_eq!(refused(with(0, 0, |w| w.parent_slot -= 1)), StateError::BlockIdMismatch);
+    assert_eq!(
+        refused(with(0, 0, |w| w.fec_roots[0][0] ^= 1)),
+        StateError::BlockIdMismatch
+    );
+    assert_eq!(
+        refused(with(0, 0, |w| w.parent_slot -= 1)),
+        StateError::BlockIdMismatch
+    );
 }
 
 #[test]
 fn a_confirmation_must_chain_to_the_footer_below_it() {
     let slot_c = 156071;
-    assert_eq!(refused(with(2, 2, |w| w.confirmations[0].parts.signature_count += 1)), StateError::BankHashMismatch(slot_c));
-    assert_eq!(refused(with(2, 2, |w| w.confirmations[0].parts.lt_hash[3] ^= 1)), StateError::BankHashMismatch(slot_c));
-    assert_eq!(refused(with(2, 2, |w| w.confirmations[1].parts.last_blockhash[0] ^= 1)), StateError::BankHashMismatch(156072));
+    assert_eq!(
+        refused(with(2, 2, |w| w.confirmations[0].parts.signature_count += 1)),
+        StateError::BankHashMismatch(slot_c)
+    );
+    assert_eq!(
+        refused(with(2, 2, |w| w.confirmations[0].parts.lt_hash[3] ^= 1)),
+        StateError::BankHashMismatch(slot_c)
+    );
+    assert_eq!(
+        refused(with(2, 2, |w| w.confirmations[1].parts.last_blockhash[0] ^= 1)),
+        StateError::BankHashMismatch(156072)
+    );
     // Swapping the two confirmations (a wrong order) breaks the chain and the footers' places.
-    assert!(matches!(refused(with(2, 2, |w| w.confirmations.swap(0, 1))), StateError::FooterRun(_)));
+    assert!(matches!(
+        refused(with(2, 2, |w| w.confirmations.swap(0, 1))),
+        StateError::FooterRun(_)
+    ));
 }
 
 #[test]
@@ -322,5 +434,8 @@ fn a_block_that_is_not_final_proves_nothing() {
     // witness is looked at.
     let (mut i, _) = input(2, 2);
     i.ancestry[0].fec_roots[0][0] ^= 1;
-    assert!(matches!(i.verify().unwrap_err(), Error::BlockIdMismatch { .. }));
+    assert!(matches!(
+        i.verify().unwrap_err(),
+        Error::BlockIdMismatch { .. }
+    ));
 }

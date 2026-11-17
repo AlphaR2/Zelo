@@ -1,9 +1,8 @@
 [package]
 name = "redact"
-description = "Shared URL/secret redaction for every Huginn binary: RPC URLs can carry API keys, so only the host is ever shown."
+description = "Hide secrets in RPC URLs: only the host is ever printed."
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+repository.workspace = true
 publish = false
-
-[dependencies]

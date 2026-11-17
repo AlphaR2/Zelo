@@ -17,28 +17,37 @@
 //! `zk/check-program-key.sh` builds a second copy at another path and compares the ELFs.
 
 use {
-    sp1_build::{build_program_with_args, BuildArgs},
+    sp1_build::{BuildArgs, build_program_with_args},
     std::path::{Path, PathBuf},
 };
 
 /// SP1 v6.10.0's build image. The digest pins the exact bytes, so a re-pushed tag can't change
 /// the program key. Change both together when upgrading SP1.
 const SP1_IMAGE_TAG: &str = "v6.10.0";
-const SP1_IMAGE: &str =
-    "ghcr.io/succinctlabs/sp1@sha256:9363a70004271de441e863612c7aefbbc5c36f371f111cd8abb1672fa5ea99f1";
+const SP1_IMAGE: &str = "ghcr.io/succinctlabs/sp1@sha256:9363a70004271de441e863612c7aefbbc5c36f371f111cd8abb1672fa5ea99f1";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=HUGINN_NATIVE_PROGRAM");
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest.join("../..").canonicalize().expect("huginn checkout root");
+    let root = manifest
+        .join("../..")
+        .canonicalize()
+        .expect("huginn checkout root");
     let native = std::env::var("HUGINN_NATIVE_PROGRAM").is_ok_and(|v| v == "1");
 
     let args = if native {
-        println!("cargo:warning=HUGINN_NATIVE_PROGRAM=1: the program key depends on this machine; don't deploy with it");
-        BuildArgs { rustflags: remap_flags(&native_remaps(&root)), locked: true, ..Default::default() }
+        println!(
+            "cargo:warning=HUGINN_NATIVE_PROGRAM=1: the program key depends on this machine; don't deploy with it"
+        );
+        BuildArgs {
+            rustflags: remap_flags(&native_remaps(&root)),
+            locked: true,
+            ..Default::default()
+        }
     } else {
-        // sp1-build reads the image from SP1_DOCKER_IMAGE; this build script is single-threaded.
-        std::env::set_var("SP1_DOCKER_IMAGE", SP1_IMAGE);
+        // sp1-build reads the image from SP1_DOCKER_IMAGE.
+        // SAFETY: a build script is single-threaded; nothing else reads the environment meanwhile.
+        unsafe { std::env::set_var("SP1_DOCKER_IMAGE", SP1_IMAGE) };
         BuildArgs {
             docker: true,
             tag: SP1_IMAGE_TAG.into(),
@@ -68,13 +77,19 @@ fn native_remaps(root: &Path) -> Vec<(PathBuf, String)> {
             remaps.push((canonical(&d.path()), "/cargo/registry".into()));
         }
     }
-    remaps.push((canonical(&cargo_home.join("git/checkouts")), "/cargo/git".into()));
+    remaps.push((
+        canonical(&cargo_home.join("git/checkouts")),
+        "/cargo/git".into(),
+    ));
     remaps.push((root.to_path_buf(), "/huginn".into()));
     remaps
 }
 
 fn remap_flags(remaps: &[(PathBuf, String)]) -> Vec<String> {
-    remaps.iter().map(|(from, to)| format!("--remap-path-prefix={}={to}", from.display())).collect()
+    remaps
+        .iter()
+        .map(|(from, to)| format!("--remap-path-prefix={}={to}", from.display()))
+        .collect()
 }
 
 fn canonical(p: &Path) -> PathBuf {

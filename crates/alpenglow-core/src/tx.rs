@@ -91,10 +91,9 @@ impl Transaction<'_> {
     /// Ed25519 *strict* verification: what Agave's sigverify applies to every transaction in
     /// a block it replays.
     ///
-    /// Huginn used to rely on replay having done this. That is not safe to assume: a block's
-    /// components before an UpdateParent marker (fast leader handover) are never replayed, but
-    /// they are still covered by the block_id, so an unsigned transaction "from" any key could
-    /// sit there and be proven. A contract that takes its authority from a transaction's
+    /// Replay alone is not enough: a block's components before an UpdateParent marker (fast
+    /// leader handover) are never replayed, but they are still covered by the block_id, so an
+    /// unsigned transaction "from" any key could sit there and be proven. A contract that takes its authority from a transaction's
     /// signers (a Solana-controlled contract) must never see one.
     pub fn verify_signatures(&self) -> Result<(), Error> {
         use ed25519_dalek::{Signature, VerifyingKey};

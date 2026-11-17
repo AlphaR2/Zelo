@@ -14,7 +14,7 @@ use {
             GeyserPlugin, GeyserPluginError, ReplicaBlockFooterInfoVersions, Result,
         },
     },
-    serde_json::{json, Value},
+    serde_json::{Value, json},
     std::{
         fs::{File, OpenOptions},
         io::Write,
@@ -51,9 +51,11 @@ impl GeyserPlugin for FooterDump {
     fn on_load(&mut self, config_file: &str, _is_reload: bool) -> Result<()> {
         let config: Value = serde_json::from_str(&std::fs::read_to_string(config_file)?)
             .map_err(|e| GeyserPluginError::ConfigFileReadError { msg: e.to_string() })?;
-        let out = config["out"].as_str().ok_or_else(|| GeyserPluginError::ConfigFileReadError {
-            msg: "missing \"out\" path".into(),
-        })?;
+        let out = config["out"]
+            .as_str()
+            .ok_or_else(|| GeyserPluginError::ConfigFileReadError {
+                msg: "missing \"out\" path".into(),
+            })?;
         let file = OpenOptions::new().create(true).append(true).open(out)?;
         self.out = Some(Mutex::new(file));
         Ok(())
@@ -97,7 +99,7 @@ impl GeyserPlugin for FooterDump {
 ///
 /// # Safety
 /// The validator takes ownership of the returned pointer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(improper_ctypes_definitions)]
 pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
     Box::into_raw(Box::new(FooterDump::default()))

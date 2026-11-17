@@ -10,7 +10,7 @@ pub mod wire;
 
 use {
     alpenglow_core::shred::{self, Shred},
-    anyhow::{bail, ensure, Context, Result},
+    anyhow::{Context, Result, bail, ensure},
     wire::Hash,
 };
 

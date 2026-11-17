@@ -3,7 +3,7 @@
 //! block_id. Unlike the local chain, the parent's own certificate is not in the footer.
 
 use {
-    ledger_dump::{build_fixture, Certs, Sets, ShredFiles},
+    ledger_dump::{Certs, Sets, ShredFiles, build_fixture},
     std::path::PathBuf,
 };
 
@@ -36,7 +36,9 @@ fn real_devnet_block_rebuilds_its_certified_block_id() {
     .expect("devnet block checks out");
     assert_eq!(built.fixture["block_final_cert"]["block_id"], BLOCK_ID);
     assert_eq!(built.fixture["shred_version"], 7016);
-    let bh = built.fixture["footer_bank_hash"].as_str().expect("footer bank hash recorded");
+    let bh = built.fixture["footer_bank_hash"]
+        .as_str()
+        .expect("footer bank hash recorded");
     assert_eq!(bh.len(), 64);
     assert_eq!(built.fixture["cluster"], "devnet");
     assert_eq!(built.fixture["epoch"], 1202);

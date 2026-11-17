@@ -1,0 +1,5 @@
+# The Rust used for the main workspace. zk/program (SP1), programs/ (platform-tools) and
+# plugins/footer-dump (Agave's exact Rust) bring their own compilers.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]

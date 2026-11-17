@@ -4,10 +4,10 @@ mod vote_account;
 
 use {
     alpenglow_lc::validator_set::{Candidate, ValidatorSet},
-    anyhow::{bail, Context, Result},
+    anyhow::{Context, Result, bail},
     base64::Engine,
     clap::{Parser, Subcommand, ValueEnum},
-    serde_json::{json, Value},
+    serde_json::{Value, json},
     std::{fs, path::PathBuf},
 };
 
@@ -78,8 +78,15 @@ impl Rpc {
         // from the host only.
         let resp: Value = ureq::post(&self.0)
             .send_json(body)
-            .map_err(|e| anyhow::anyhow!("{method} request to {} failed: {}", redact::Host(&self.0), redact::redact_text(&e.to_string())))?
-            .into_json()?;
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "{method} request to {} failed: {}",
+                    redact::Host(&self.0),
+                    redact::redact_text(&e.to_string())
+                )
+            })?
+            .body_mut()
+            .read_json()?;
         if let Some(err) = resp.get("error") {
             bail!("{method} returned error: {err}");
         }
@@ -110,7 +117,10 @@ fn run() -> Result<()> {
                 .as_array()
                 .context("signature")?;
             if sig.iter().all(|b| b.as_u64() == Some(0)) {
-                bail!("{} started on Alpenglow at genesis: the genesis cert is an all-zero placeholder", cluster.name());
+                bail!(
+                    "{} started on Alpenglow at genesis: the genesis cert is an all-zero placeholder",
+                    cluster.name()
+                );
             }
             let path = write(
                 &cli.out,
@@ -298,7 +308,10 @@ mod tests {
             ],
             "delinquent": [{"votePubkey": "C", "activatedStake": 3, "epochVoteAccount": true}]
         });
-        assert_eq!(members(&va).unwrap(), vec![("A".into(), 5), ("C".into(), 3)]);
+        assert_eq!(
+            members(&va).unwrap(),
+            vec![("A".into(), 5), ("C".into(), 3)]
+        );
     }
 
     #[test]

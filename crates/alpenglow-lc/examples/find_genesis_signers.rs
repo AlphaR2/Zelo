@@ -1,4 +1,4 @@
-//! Phase 0 research tool: check a real genesis certificate's BLS signature when we can't
+//! Check a real genesis certificate's BLS signature when we can't
 //! rebuild the exact historical validator ranking.
 //!
 //! The cert's bitmap says *how many* validators signed (k of n). Ranks have shifted since,
@@ -14,13 +14,13 @@
 use {
     agave_votor_messages::{consensus_message::Block, vote::Vote, wire::get_vote_payload_to_sign},
     alpenglow_lc::validator_set::ValidatorSet,
-    anyhow::{bail, Context, Result},
+    anyhow::{Context, Result, bail},
     rayon::prelude::*,
     serde_json::Value,
     solana_bls_signatures::{
+        PreparedHashedMessage, PubkeyProjective, Signature, SignatureProjective, VerifySignature,
         keypair::Keypair,
         pubkey::{PopVerified, PubkeyAffine, PubkeyCompressed},
-        PreparedHashedMessage, PubkeyProjective, Signature, SignatureProjective, VerifySignature,
     },
     solana_hash::Hash,
     std::time::Instant,
@@ -86,7 +86,10 @@ fn main() -> Result<()> {
 
     match search(&keys, ranks.len(), &signature, &prepared) {
         Some(found) => {
-            println!("MATCH: these {} validators signed the genesis cert:", found.len());
+            println!(
+                "MATCH: these {} validators signed the genesis cert:",
+                found.len()
+            );
             for i in found {
                 let e = &set.entries[i];
                 println!(

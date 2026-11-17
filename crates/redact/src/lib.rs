@@ -23,7 +23,9 @@ pub fn redact_text(text: &str) -> String {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
         let end = tail
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']' | '}' | ','))
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']' | '}' | ',')
+            })
             .unwrap_or(tail.len());
         out.push_str(&redact_url(&tail[..end]));
         rest = &tail[end..];
@@ -43,20 +45,27 @@ fn find_scheme(s: &str) -> Option<usize> {
 /// Blank the value after `api-key=`, `apikey=`, `token=`, `secret=` and `private_key=`
 /// when they show up outside a URL (for example in a copied query string).
 fn redact_key_values(text: &str) -> String {
-    const KEYS: [&str; 6] = ["api-key=", "api_key=", "apikey=", "token=", "secret=", "private_key="];
+    const KEYS: [&str; 6] = [
+        "api-key=",
+        "api_key=",
+        "apikey=",
+        "token=",
+        "secret=",
+        "private_key=",
+    ];
     let lower = text.to_ascii_lowercase();
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
     while i < text.len() {
-        let hit = KEYS
-            .iter()
-            .find(|k| lower[i..].starts_with(*k))
-            .copied();
+        let hit = KEYS.iter().find(|k| lower[i..].starts_with(*k)).copied();
         if let Some(k) = hit {
             out.push_str(&text[i..i + k.len()]);
             out.push_str("[redacted]");
             i += k.len();
-            while i < text.len() && !text[i..].starts_with(|c: char| c.is_whitespace() || matches!(c, '&' | '"' | '\'')) {
+            while i < text.len()
+                && !text[i..]
+                    .starts_with(|c: char| c.is_whitespace() || matches!(c, '&' | '"' | '\''))
+            {
                 i += text[i..].chars().next().map_or(1, char::len_utf8);
             }
         } else {
@@ -83,8 +92,14 @@ mod tests {
 
     #[test]
     fn url_keeps_only_host() {
-        assert_eq!(redact_url("https://mainnet.helius-rpc.com/?api-key=SECRET"), "https://mainnet.helius-rpc.com/…");
-        assert_eq!(redact_url("https://user:pw@rpc.example.com:8899/v1/TOKEN"), "https://rpc.example.com:8899/…");
+        assert_eq!(
+            redact_url("https://mainnet.helius-rpc.com/?api-key=SECRET"),
+            "https://mainnet.helius-rpc.com/…"
+        );
+        assert_eq!(
+            redact_url("https://user:pw@rpc.example.com:8899/v1/TOKEN"),
+            "https://rpc.example.com:8899/…"
+        );
         assert_eq!(redact_url("http://127.0.0.1:8899"), "http://127.0.0.1:8899");
         assert_eq!(redact_url("not a url"), "not a url");
     }

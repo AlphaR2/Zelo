@@ -1,0 +1,23 @@
+[package]
+name = "huginn-programs"
+description = "What the outbox and fill programs share with each other and with off-chain code: account layouts, the order id, PDA helpers."
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+pinocchio.workspace = true
+pinocchio-system.workspace = true
+solana-sha256-hasher.workspace = true
+solana-keccak-hasher.workspace = true
+
+# On chain, PDAs and hashes are syscalls. Off chain (tests, tools) they need software versions.
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+solana-address = { workspace = true, features = ["curve25519"] }
+solana-sha256-hasher = { workspace = true, features = ["sha2"] }
+solana-keccak-hasher = { workspace = true, features = ["sha3"] }
+
+[lints]
+workspace = true

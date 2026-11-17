@@ -9,7 +9,7 @@
 //!   Variants: 0 footer, 1 header (parent slot + parent block_id), 2 update-parent,
 //!   3 genesis certificate.
 //!
-//! Mirrors Agave v4.4.0 `entry/src/block_component.rs`, `entry/src/entry.rs` and
+//! Mirrors Agave 4.4 `entry/src/block_component.rs`, `entry/src/entry.rs` and
 //! `ledger/src/shredder.rs::deshred`.
 
 use crate::{

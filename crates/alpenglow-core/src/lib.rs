@@ -1,6 +1,6 @@
-//! Alpenglow light-client checks in pure Rust: finality certificates, block_id, and
-//! transactions inside blocks. No Agave crates and no C, so the same code runs natively
-//! and inside SP1.
+//! The verifier, in plain Rust with no Agave crates and no C, so the same code runs natively and
+//! inside the SP1 zkVM: finality certificates, shreds and block_id, transactions and their
+//! signatures, and what a block changed in the chain's state.
 
 #[cfg(feature = "fixture")]
 pub mod accounts_dump;

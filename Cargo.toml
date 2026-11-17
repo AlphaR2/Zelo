@@ -1,30 +1,68 @@
+# The main workspace: everything that runs on a normal computer.
+#
+# Four folders build on their own, each for a reason:
+#   zk/program           compiled for the SP1 zkVM; its Cargo.lock fixes the program key
+#   zk/prover            builds zk/program and pulls in the SP1 SDK
+#   programs/            Solana programs, compiled for SBF with `cargo build-sbf`
+#   plugins/footer-dump  loaded into the validator, so it uses the validator's exact Rust and crates
 [workspace]
-resolver = "2"
-members = ["crates/alpenglow-core", "crates/alpenglow-lc", "crates/fetch", "crates/ledger-dump", "crates/shred-repair", "crates/redact", "crates/handover"]
+resolver = "3"
+members = [
+    "crates/alpenglow-core",
+    "crates/alpenglow-lc",
+    "crates/fetch",
+    "crates/ledger-dump",
+    "crates/redact",
+    "crates/shred-repair",
+]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 version = "0.1.0"
+repository = "https://github.com/AlphaR2/huginn"
 
 [workspace.dependencies]
-# Pinned exactly. Bump together and log in docs/research/findings.md.
-agave-bls-cert-verify = { version = "=4.4.0", features = ["agave-unstable-api"] }
-agave-votor-messages = { version = "=4.4.0", features = ["agave-unstable-api"] }
+# Internal crates
+alpenglow-core = { path = "crates/alpenglow-core" }
+alpenglow-lc = { path = "crates/alpenglow-lc" }
+redact = { path = "crates/redact" }
+
+# Agave's own crates, pinned to the validator release we check against (Agave 4.4.1).
+# Bump them together, with the validator.
+agave-bls-cert-verify = { version = "=4.4.1", features = ["agave-unstable-api"] }
+agave-votor-messages = { version = "=4.4.1", features = ["agave-unstable-api"] }
 solana-hash = "=4.7.0"
 solana-bls-signatures = "=4.0.2"
-# Only for tests that check alpenglow-core's transaction parser against Agave's.
+solana-keypair = "=4.0.1"
+solana-signer = "=4.0.0"
+# Tests only: check our transaction parser against Agave's (the versions Agave 4.4 uses).
 solana-transaction = { version = "=5.1.0", features = ["wincode"] }
 solana-message = { version = "=5.1.0", features = ["wincode"] }
 wincode = "=0.6.3"
+# Same RocksDB as Agave 4.4 (librocksdb-sys 0.17.3+10.4.2), so we can read the ledger it writes.
+rocksdb = { version = "=0.24.0", default-features = false, features = ["lz4", "bindgen-runtime"] }
+
+# Crates that also run inside the SP1 zkVM. SP1 has fast (precompile) versions of exactly
+# these, so they stay on the versions SP1 patches: bls12_381 0.8, sha2 0.10, and
+# ed25519-dalek 2 (its curve25519-dalek 4.1 is the one SP1 patches; dalek 3 moved to 5.x).
+bls12_381 = { version = "=0.8.0", default-features = false }
+sha2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
+blake3 = { version = "1", default-features = false }
+
+# General
+anyhow = "1"
+base64 = "0.23"
+bs58 = "0.5"
+clap = { version = "4", features = ["derive", "env"] }
+hex = { version = "0.4", features = ["serde"] }
+rayon = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-hex = { version = "0.4", features = ["serde"] }
-sha2 = "0.10"
 thiserror = "2"
-anyhow = "1"
+ureq = { version = "3", features = ["json"] }
 
-# alpenglow-core uses SP1's patched bls12_381 natively too, so native tests and the zkVM
-# compile the same source. Off the zkVM target it is plain Rust (sp1-lib is zkvm-only).
+# Use SP1's bls12_381 natively too, so native tests compile the same source the zkVM runs.
 [patch.crates-io]
 bls12_381 = { git = "https://github.com/sp1-patches/bls12_381", tag = "patch-0.8.0-sp1-6.10.0" }

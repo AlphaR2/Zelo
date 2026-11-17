@@ -9,7 +9,7 @@
 //! block_id = merkle_root(leaves)
 //! ```
 //!
-//! Reimplemented from Agave v4.4.0 (`ledger/src/shred/{merkle.rs,merkle_tree.rs,wire.rs}`,
+//! Reimplemented from Agave 4.4 (`ledger/src/shred/{merkle.rs,merkle_tree.rs,wire.rs}`,
 //! `blockstore.rs::build_double_merkle_tree`) so it needs nothing beyond SHA-256.
 
 use sha2::{Digest, Sha256};
@@ -221,7 +221,7 @@ impl<'a> Shred<'a> {
         ])
     }
 
-    pub fn proof(&self) -> impl Iterator<Item = &'a [u8]> {
+    pub fn proof(&self) -> impl Iterator<Item = &'a [u8]> + use<'a> {
         let o = self.proof_offset();
         self.bytes[o..o + self.proof_len()].chunks(SIZE_OF_PROOF_ENTRY)
     }

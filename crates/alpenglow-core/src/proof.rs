@@ -11,7 +11,7 @@ use {
     crate::{
         block,
         finality::{self, CertType},
-        shred::{self, Hash, Shred, DATA_SHREDS_PER_FEC_SET},
+        shred::{self, DATA_SHREDS_PER_FEC_SET, Hash, Shred},
         state::{self, StateClaim, StateWitness},
         tx,
     },
@@ -105,7 +105,7 @@ pub enum Error {
     AncestryOrder { slot: u64, parent_slot: u64 },
 }
 
-/// The validator set commitment (item 1.1). A destination chain stores this per epoch.
+/// The validator set commitment. A destination chain stores this per epoch.
 ///
 /// `sha256("huginn-validator-set-v1" | count u32 LE | for each, in rank order: bls_pubkey[48] | stake u64 LE)`
 ///
@@ -131,7 +131,7 @@ fn signature(a: &Aggregate) -> Result<bls12_381::G2Affine, Error> {
 }
 
 impl FinalityInput {
-    /// Checks the certificate (item 1.2). Fast path: FinalizeFast(block) at 80%. Slow path:
+    /// Checks the certificate. Fast path: FinalizeFast(block) at 80%. Slow path:
     /// Notarize(block) at 60% *and* Finalize(slot) at 60%; Finalize names no block, so the
     /// Notarize part is what ties finality to `block_id`.
     pub fn verify(&self) -> Result<Finality, Error> {
@@ -353,7 +353,7 @@ impl TxInclusion {
                             entry_index: e as u32,
                             tx_index: t as u32,
                             raw: tx.raw.to_vec(),
-                        })
+                        });
                     }
                     Err(tx::Error::BadSignature(i)) => unsigned = Some(i),
                     Err(_) => {}
@@ -440,7 +440,9 @@ pub fn verify_ancestry(
     links: &[AncestryLink],
 ) -> Result<(u64, Hash), Error> {
     let path = ancestry_path(slot, block_id, links)?;
-    Ok(*path.last().expect("the path holds at least the certified block"))
+    Ok(*path
+        .last()
+        .expect("the path holds at least the certified block"))
 }
 
 /// Like [`verify_ancestry`], but returns every block on the way: `path[0]` is the certified
@@ -527,7 +529,8 @@ impl TxInput {
 impl TxOutput {
     /// Public values, version 2: a fixed big-endian byte layout any chain can slice. A
     /// header says which block is final and which block holds the claims, then a list of
-    /// tagged claims. Today the only claim is a transaction (tag 1).
+    /// tagged claims. This output has one claim, a transaction (tag 1); [`ClaimOutput::encode`]
+    /// adds a change set (tag 2).
     ///
     /// ```text
     /// 0     u8   layout version (= 2)
@@ -540,10 +543,10 @@ impl TxOutput {
     /// 84    u64  total_stake
     /// 92    u64  slot_B (the block holding the claims; = D when no ancestry was walked)
     /// 100   [32] block_id of B
-    /// 132   u16  descendant footers opened (0 until the state proof)
-    /// 134   u16  later leader windows covered (0 until the state proof)
+    /// 132   u16  descendant footers opened (0 without a change-set claim)
+    /// 134   u16  later leader windows covered (0 without a change-set claim)
     /// 136   u64  slot of the highest opened footer (= slot_B when none)
-    /// 144   u8   claim count (= 1)
+    /// 144   u8   claim count
     /// 145   u8   claim tag (= 1, transaction)
     /// 146   u32  component_start_shred
     /// 150   u32  entry_index
@@ -563,8 +566,6 @@ impl TxOutput {
         .encode()
     }
 }
-
-
 
 /// What one proof can claim about block B: any of a transaction in it and its change set.
 /// The zkVM program runs this; [`TxInput`] is the transaction-only special case.
@@ -614,7 +615,13 @@ impl ClaimInput {
             None => None,
         };
         let state = match &self.state {
-            Some(w) => Some(w.verify(slot, &block_id, finality.shred_version, &self.ancestry, &path)?),
+            Some(w) => Some(w.verify(
+                slot,
+                &block_id,
+                finality.shred_version,
+                &self.ancestry,
+                &path,
+            )?),
             None => None,
         };
         Ok(ClaimOutput {
@@ -636,10 +643,9 @@ impl ClaimOutput {
     /// ```
     pub fn encode(&self) -> Vec<u8> {
         let f = &self.finality;
-        let (n, windows, top) = self
-            .state
-            .as_ref()
-            .map_or((0, 0, self.slot), |s| (s.confirmations, s.windows, s.top_slot));
+        let (n, windows, top) = self.state.as_ref().map_or((0, 0, self.slot), |s| {
+            (s.confirmations, s.windows, s.top_slot)
+        });
         let mut out = Vec::new();
         out.push(2);
         out.extend_from_slice(&f.validator_set_hash);

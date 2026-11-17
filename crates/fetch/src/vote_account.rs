@@ -10,7 +10,7 @@
 //!   145..193 bls_pubkey_compressed [u8; 48]
 //! Older versions (tags 0..=2) also start with node_pubkey at 4 but have no BLS key.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 pub const VERSION_V4: u32 = 3;
 const NODE: std::ops::Range<usize> = 4..36;

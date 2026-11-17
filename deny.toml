@@ -1,0 +1,60 @@
+# cargo-deny: security advisories, licences and dependency sources. CI runs it on every workspace.
+#   cargo deny check                                   (main workspace)
+#   cargo deny --manifest-path zk/prover/Cargo.toml check
+
+[graph]
+all-features = true
+
+[advisories]
+# Each ignore names the crate that brings the advisory in, and why it stays for now.
+ignore = [
+    # Unmaintained, not vulnerable. bincode 1.x is used by Agave and SP1 crates we pin.
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x: pulled in by Agave 4.4 and SP1 6.10" },
+    # crypto-bigint 0.5 timing issues, via k256/p256 in sp1-sdk 6.10. It signs prover-network
+    # requests on the operator's own machine. Upgrade with SP1.
+    { id = "RUSTSEC-2026-0387", reason = "pinned by sp1-sdk 6.10 (k256 0.13)" },
+    # Unmaintained crates deep in sp1-sdk's and the Solana SDK's trees.
+    { id = "RUSTSEC-2021-0139", reason = "ansi_term, via sp1-sdk" },
+    { id = "RUSTSEC-2025-0012", reason = "backoff, via sp1-sdk" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono, via sp1-sdk" },
+    { id = "RUSTSEC-2024-0388", reason = "derivative, via sp1-sdk" },
+    { id = "RUSTSEC-2024-0384", reason = "instant, via sp1-sdk" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix, via sp1-sdk" },
+    { id = "RUSTSEC-2024-0436", reason = "paste, via sp1-sdk and the Solana SDK" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2, via sp1-sdk" },
+    { id = "RUSTSEC-2025-0161", reason = "libsecp256k1, via Mollusk (tests only)" },
+]
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# SP1's accelerated crates (bls12_381, sha2) come from its patch repositories.
+allow-git = [
+    "https://github.com/sp1-patches/bls12_381",
+    "https://github.com/sp1-patches/RustCrypto-hashes",
+]

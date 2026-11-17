@@ -8,7 +8,8 @@ fn rpc(method: &str, params: serde_json::Value) -> serde_json::Value {
     ureq::post("http://127.0.0.1:8899")
         .send_json(body)
         .unwrap()
-        .into_json::<serde_json::Value>()
+        .body_mut()
+        .read_json::<serde_json::Value>()
         .unwrap()["result"]
         .clone()
 }

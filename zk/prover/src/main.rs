@@ -14,7 +14,7 @@ use {
     alpenglow_core::{fixture, proof::ClaimInput},
     anyhow::Result,
     clap::Parser,
-    huginn_prover::{alpenglow_core, tx_input_from_block_file, Huginn, Mode},
+    huginn_prover::{Huginn, Mode, alpenglow_core, tx_input_from_block_file},
     std::path::Path,
 };
 
@@ -67,47 +67,93 @@ async fn main() -> Result<()> {
             shred_version: fx.shred_version,
             slot: fx.certified.0,
             block_id: fx.certified.1,
-            final_aggregate: alpenglow_core::proof::Aggregate { signature: vec![], bitmap: vec![] },
+            final_aggregate: alpenglow_core::proof::Aggregate {
+                signature: vec![],
+                bitmap: vec![],
+            },
             notar_aggregate: None,
         };
-        let input = ClaimInput { finality: fixture::synthetic(&base, cli.validators), ancestry: fx.links, tx: None, state: Some(fx.witness) };
+        let input = ClaimInput {
+            finality: fixture::synthetic(&base, cli.validators),
+            ancestry: fx.links,
+            tx: None,
+            state: Some(fx.witness),
+        };
         let huginn = Huginn::from_env().await;
         let e = huginn.execute(&input).await?;
         println!(
             "state claim, {} changed accounts, {} ancestry link(s), {} footer(s) opened: read {} + finality {} + claims {}, total {} cycles",
-            input.state.as_ref().unwrap().changes.len(), input.ancestry.len(), cli.confirm, e.read_cycles, e.finality_cycles, e.inclusion_cycles, e.total_cycles
+            input.state.as_ref().unwrap().changes.len(),
+            input.ancestry.len(),
+            cli.confirm,
+            e.read_cycles,
+            e.finality_cycles,
+            e.inclusion_cycles,
+            e.total_cycles
         );
         return Ok(());
     }
     let real = tx_input_from_block_file(&cli.block, &cli.signature)?;
 
-    let path = if real.finality.notar_aggregate.is_none() { "fast" } else { "slow" };
+    let path = if real.finality.notar_aggregate.is_none() {
+        "fast"
+    } else {
+        "slow"
+    };
     let n = real.finality.validators.len();
-    let label = format!("real, {n} validator{}, {path}", if n == 1 { "" } else { "s" });
+    let label = format!(
+        "real, {n} validator{}, {path}",
+        if n == 1 { "" } else { "s" }
+    );
     let mut runs = vec![(label, real.clone())];
     for &n in &cli.synthetic {
-        runs.push((format!("{n} validators, fast"), ClaimInput { finality: fixture::synthetic(&real.finality, n), ..real.clone() }));
+        runs.push((
+            format!("{n} validators, fast"),
+            ClaimInput {
+                finality: fixture::synthetic(&real.finality, n),
+                ..real.clone()
+            },
+        ));
     }
     for &n in &cli.slow {
-        runs.push((format!("{n} validators, slow"), ClaimInput { finality: fixture::synthetic_slow(&real.finality, n), ..real.clone() }));
+        runs.push((
+            format!("{n} validators, slow"),
+            ClaimInput {
+                finality: fixture::synthetic_slow(&real.finality, n),
+                ..real.clone()
+            },
+        ));
     }
 
     let huginn = Huginn::from_env().await;
-    println!("{:<28} {:>14} {:>14} {:>14}", "input", "finality", "inclusion", "total cycles");
+    println!(
+        "{:<28} {:>14} {:>14} {:>14}",
+        "input", "finality", "inclusion", "total cycles"
+    );
     for (name, input) in runs {
         let e = huginn.execute(&input).await?;
-        println!("{name:<28} {:>14} {:>14} {:>14}", e.finality_cycles, e.inclusion_cycles, e.total_cycles);
+        println!(
+            "{name:<28} {:>14} {:>14} {:>14}",
+            e.finality_cycles, e.inclusion_cycles, e.total_cycles
+        );
         let Some(mode) = cli.prove else { continue };
 
         let proven = huginn.prove(&input, mode).await?;
         // One file name per run: "1000 validators, fast" -> "1000-validators-fast".
-        let slug = name.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join("-");
+        let slug = name
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join("-");
         let dir = Path::new(&cli.out);
         std::fs::create_dir_all(dir)?;
         let bin = dir.join(format!("{slug}.{}.bin", mode.as_str()));
         proven.proof.save(&bin)?;
         let summary = dir.join(format!("{slug}.{}.json", mode.as_str()));
-        std::fs::write(&summary, serde_json::to_string_pretty(&proven.summary(&name))? + "\n")?;
+        std::fs::write(
+            &summary,
+            serde_json::to_string_pretty(&proven.summary(&name))? + "\n",
+        )?;
         println!(
             "  {} proof: setup {:.1}s, prove {:.1}s, verify {:.2}s -> {}",
             mode.as_str(),

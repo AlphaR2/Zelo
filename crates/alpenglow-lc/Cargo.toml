@@ -1,12 +1,13 @@
 [package]
 name = "alpenglow-lc"
-description = "Alpenglow light client: certificate finality and block inclusion checks. No networking, no zkVM deps."
+description = "The reference: the same checks done with Agave's own crates, to confirm alpenglow-core agrees. Also ranks validator sets."
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+repository.workspace = true
 
 [dependencies]
-alpenglow-core = { path = "../alpenglow-core" }
+alpenglow-core.workspace = true
 agave-bls-cert-verify.workspace = true
 agave-votor-messages.workspace = true
 solana-bls-signatures.workspace = true
@@ -17,9 +18,9 @@ sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
-rayon = "1"
-solana-transaction.workspace = true
-solana-message.workspace = true
-wincode.workspace = true
 anyhow.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+solana-message.workspace = true
+solana-transaction.workspace = true
+wincode.workspace = true

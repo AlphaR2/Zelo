@@ -4,8 +4,10 @@
 
 use {
     crate::{
-        finality::{hash_to_g2, CertType},
-        proof::{AncestryLink, Aggregate, BlockInput, FinalityInput, TxInclusion, TxInput, Validator},
+        finality::{CertType, hash_to_g2},
+        proof::{
+            Aggregate, AncestryLink, BlockInput, FinalityInput, TxInclusion, TxInput, Validator,
+        },
         shred::Hash,
         state::{Account, AccountChange, BankParts, Confirmation, FooterRun, StateWitness},
     },
@@ -180,11 +182,13 @@ pub fn synthetic_slow(base: &FinalityInput, n: usize) -> FinalityInput {
     }
 }
 
-
 // ---- state proofs ---------------------------------------------------------------------------
 
 fn lt(v: &Value) -> Vec<u16> {
-    bytes(v).chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect()
+    bytes(v)
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect()
 }
 
 fn parts(v: &Value) -> BankParts {
@@ -198,7 +202,12 @@ fn parts(v: &Value) -> BankParts {
 fn footer(v: &Value) -> FooterRun {
     FooterRun {
         boundary_shred: bytes(&v["boundary_shred"]),
-        shreds: v["shreds"].as_array().expect("shreds").iter().map(bytes).collect(),
+        shreds: v["shreds"]
+            .as_array()
+            .expect("shreds")
+            .iter()
+            .map(bytes)
+            .collect(),
     }
 }
 
@@ -231,17 +240,30 @@ pub fn state_fixture(f: &Value, depth: usize, confirm: usize) -> StateFixture {
     let desc = f["descendants"].as_array().expect("descendants");
     assert!(depth <= desc.len() && confirm <= depth);
     let link = |d: &Value| AncestryLink {
-        fec_roots: d["fec_roots"].as_array().expect("fec_roots").iter().map(hash).collect(),
+        fec_roots: d["fec_roots"]
+            .as_array()
+            .expect("fec_roots")
+            .iter()
+            .map(hash)
+            .collect(),
         parent_slot: d["parent_slot"].as_u64().expect("parent_slot"),
         parent_block_id: hash(&d["parent_block_id"]),
     };
     let links: Vec<AncestryLink> = desc[..depth].iter().rev().map(link).collect();
     let certified = match depth {
         0 => (f["slot"].as_u64().unwrap(), hash(&f["block_id"])),
-        d => (desc[d - 1]["slot"].as_u64().unwrap(), hash(&desc[d - 1]["block_id"])),
+        d => (
+            desc[d - 1]["slot"].as_u64().unwrap(),
+            hash(&desc[d - 1]["block_id"]),
+        ),
     };
     let witness = StateWitness {
-        fec_roots: f["fec_roots"].as_array().expect("fec_roots").iter().map(hash).collect(),
+        fec_roots: f["fec_roots"]
+            .as_array()
+            .expect("fec_roots")
+            .iter()
+            .map(hash)
+            .collect(),
         parent_slot: f["parent_slot"].as_u64().expect("parent_slot"),
         parent_block_id: hash(&f["parent_block_id"]),
         footer: footer(&f["footer"]),
@@ -260,7 +282,10 @@ pub fn state_fixture(f: &Value, depth: usize, confirm: usize) -> StateFixture {
             .collect(),
         confirmations: desc[..confirm]
             .iter()
-            .map(|d| Confirmation { footer: footer(&d["footer"]), parts: parts(&d["parts"]) })
+            .map(|d| Confirmation {
+                footer: footer(&d["footer"]),
+                parts: parts(&d["parts"]),
+            })
             .collect(),
     };
     let shred_version = crate::shred::Shred::parse(&witness.footer.boundary_shred)
