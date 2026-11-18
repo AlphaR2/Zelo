@@ -6,7 +6,8 @@ use {
     crate::{
         finality::{CertType, hash_to_g2},
         proof::{
-            Aggregate, AncestryLink, BlockInput, FinalityInput, TxInclusion, TxInput, Validator,
+            Aggregate, AncestryLink, BlockInput, ClaimInput, FinalityInput, TxInclusion, TxInput,
+            Validator,
         },
         shred::Hash,
         state::{Account, AccountChange, BankParts, Confirmation, FooterRun, StateWitness},
@@ -298,5 +299,55 @@ pub fn state_fixture(f: &Value, depth: usize, confirm: usize) -> StateFixture {
         witness,
         links,
         certified,
+    }
+}
+
+/// Who certifies a state claim.
+pub enum Certifier<'a> {
+    /// The chain's own certificate: a `ledger-dump` block file for the top block of the
+    /// ancestry (the `depth`-th descendant of B, or B itself when `depth` is 0). Its own parent
+    /// links, if any, lead from the certified block down to that block.
+    Real(&'a Value),
+    /// `n` synthetic validators (a local chain has one validator; tests want more).
+    Synthetic(usize),
+}
+
+/// The proof input for a state claim: the witness of `f` (from `make_state_fixture`), its
+/// ancestry, and the certificate.
+pub fn state_claim(f: &Value, depth: usize, confirm: usize, by: Certifier) -> ClaimInput {
+    let fx = state_fixture(f, depth, confirm);
+    let (finality, ancestry) = match by {
+        Certifier::Real(block) => {
+            assert_eq!(
+                block["slot"].as_u64(),
+                Some(fx.certified.0),
+                "the block file must be for the top block of the ancestry (slot {})",
+                fx.certified.0
+            );
+            // Links from the certified block down to the top block, then on down to B.
+            let mut links = ancestry(block);
+            links.extend(fx.links);
+            (block_input(block).finality, links)
+        }
+        Certifier::Synthetic(n) => {
+            let base = FinalityInput {
+                validators: vec![],
+                shred_version: fx.shred_version,
+                slot: fx.certified.0,
+                block_id: fx.certified.1,
+                final_aggregate: Aggregate {
+                    signature: vec![],
+                    bitmap: vec![],
+                },
+                notar_aggregate: None,
+            };
+            (synthetic(&base, n), fx.links)
+        }
+    };
+    ClaimInput {
+        finality,
+        ancestry,
+        tx: None,
+        state: Some(fx.witness),
     }
 }

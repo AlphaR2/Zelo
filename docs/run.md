@@ -138,8 +138,21 @@ cargo run --release -p alpenglow-core --example check_bank_hash -- <work>/accoun
 ```bash
 cargo run --release -p alpenglow-core --example make_state_fixture -- <work> .local-ledger/ledger_tool/bank_hash_details <S> 2 <work>/state_<S>.json
 ```
+Certify the claim with the chain's own certificate. Make a checked block file for the top block of the ancestry, `S+2`, from the exported shreds; `--sets` holds `cluster_info.json` and `validator_set_<epoch>.json` from `fetch`, made while the validator runs:
+
 ```bash
-cargo run --release -p alpenglow-core --example make_state_pv -- <work>/state_<S>.json 2 2 <state file>.json
+cargo run --release -p ledger-dump -- --shreds <work> --sets <sets dir> --slot <S+2> --out <work>
+```
+```bash
+cargo run --release -p alpenglow-core --example make_state_pv -- <work>/state_<S>.json 2 2 <state file>.json <work>/block_<S+2>.json
+```
+
+Without the block file, `make_state_pv` certifies the claim with synthetic validators, which only test contracts accept.
+
+To prove the claim, run it from `zk/prover`. Use `--prove groth16` with `SP1_PROVER=network` for a real chain; `register()` reads the summary it writes:
+
+```bash
+cargo run --release -- --state <work>/state_<S>.json --depth 2 --confirm 2 --certificate <work>/block_<S+2>.json --prove groth16
 ```
 
 `target/deploy/*-keypair.json` are the programs' address keys. They are gitignored; never share them. Once the programs are final, make them immutable with `solana program set-upgrade-authority <id> --final`.

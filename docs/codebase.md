@@ -82,6 +82,7 @@ Everything a proof proves, in plain Rust with no Agave crates and no C, so it co
 | `tests/tx_signatures.rs` | 6 | changed or invented signatures, another message, another key, an off-curve key: all refused |
 | `tests/block_contents.rs` | 6 | a real block parses; the memo transaction equals RPC's copy byte for byte |
 | `tests/state.rs` | 22 | a real replayed block: the real witness passes; every tampered piece fails |
+| `tests/state_real_certificate.rs` | 3 | the order-settlement fill's block, certified by the chain's own certificate; a changed certificate and a certificate for the wrong block are refused |
 | unit tests | 7 | lattice-hash vectors, Merkle rules |
 
 ---
@@ -190,6 +191,7 @@ A fill costs about 20,500 compute units.
 | `local/block_44000.json`, `block_46718.json`, `tx_46718.json` | Whole local blocks, and RPC's copy of the memo transaction in 46718 |
 | `local/shreds/` | Two local blocks' raw shreds: enough to prove a memo with nothing else |
 | `local/state_156070.json` | The state witness of a real replayed block (1.1 MB) |
+| `local/state_2103.json`, `local/block_2105.json` | The block where a real fill paid a merchant and the outbox recorded the order, and the chain's own certificate for its descendant 2105 |
 | `tx_v1_agave.json` | A v1 transaction written by Agave's SDK |
 | `proofs/` | Where the prover writes proof summaries (not committed) |
 

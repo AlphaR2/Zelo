@@ -9,6 +9,11 @@
 //!
 //!   cargo run --release -- --prove compressed
 //!   cargo run --release -- --prove groth16      # needs Docker running (gnark wrap)
+//!
+//! A state claim instead (a witness from `make_state_fixture`), certified by the chain's own
+//! certificate (a `ledger-dump` block file for the top block of the ancestry):
+//!
+//!   cargo run --release -- --state state_<slot>.json --depth 2 --confirm 2 --certificate block_<top>.json
 
 use {
     alpenglow_core::{fixture, proof::ClaimInput},
@@ -38,16 +43,19 @@ struct Cli {
     /// Also prove each run: core, compressed or groth16.
     #[arg(long)]
     prove: Option<Mode>,
-    /// Run a state claim instead: a `fixtures/local/state_*.json` (from `make_state_fixture`),
-    /// certified by synthetic validators. `--depth` descendants form the ancestry and the
-    /// witness opens the first `--confirm` of their footers.
+    /// Run a state claim instead: a `state_<slot>.json` (from `make_state_fixture`). `--depth`
+    /// descendants form the ancestry and the witness opens the first `--confirm` of their footers.
     #[arg(long)]
     state: Option<String>,
+    /// For `--state`: the chain's certificate, a `ledger-dump` block file for the top block of
+    /// the ancestry. Without it, `--validators` synthetic validators certify the claim.
+    #[arg(long)]
+    certificate: Option<String>,
     #[arg(long, default_value_t = 0)]
     depth: usize,
     #[arg(long, default_value_t = 0)]
     confirm: usize,
-    /// Synthetic validators certifying a `--state` run.
+    /// Synthetic validators certifying a `--state` run without `--certificate`.
     #[arg(long, default_value_t = 21)]
     validators: usize,
     /// Where proof summaries go.
@@ -59,38 +67,39 @@ struct Cli {
 async fn main() -> Result<()> {
     sp1_sdk::utils::setup_logger();
     let cli = Cli::parse();
+    let huginn = Huginn::from_env().await;
     if let Some(path) = &cli.state {
         let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
-        let fx = fixture::state_fixture(&f, cli.depth, cli.confirm);
-        let base = alpenglow_core::proof::FinalityInput {
-            validators: vec![],
-            shred_version: fx.shred_version,
-            slot: fx.certified.0,
-            block_id: fx.certified.1,
-            final_aggregate: alpenglow_core::proof::Aggregate {
-                signature: vec![],
-                bitmap: vec![],
-            },
-            notar_aggregate: None,
+        let block: Option<serde_json::Value> = match &cli.certificate {
+            Some(p) => Some(serde_json::from_str(&std::fs::read_to_string(p)?)?),
+            None => None,
         };
-        let input = ClaimInput {
-            finality: fixture::synthetic(&base, cli.validators),
-            ancestry: fx.links,
-            tx: None,
-            state: Some(fx.witness),
+        let by = match &block {
+            Some(b) => fixture::Certifier::Real(b),
+            None => fixture::Certifier::Synthetic(cli.validators),
         };
-        let huginn = Huginn::from_env().await;
+        let input = fixture::state_claim(&f, cli.depth, cli.confirm, by);
         let e = huginn.execute(&input).await?;
         println!(
-            "state claim, {} changed accounts, {} ancestry link(s), {} footer(s) opened: read {} + finality {} + claims {}, total {} cycles",
+            "state claim, {} changed accounts, {} ancestry link(s), {} footer(s) opened, {} validator(s){}: read {} + finality {} + claims {}, total {} cycles",
             input.state.as_ref().unwrap().changes.len(),
             input.ancestry.len(),
             cli.confirm,
+            input.finality.validators.len(),
+            if block.is_some() {
+                " (real certificate)"
+            } else {
+                " (synthetic)"
+            },
             e.read_cycles,
             e.finality_cycles,
             e.inclusion_cycles,
             e.total_cycles
         );
+        if let Some(mode) = cli.prove {
+            let slot = f["slot"].as_u64().unwrap_or_default();
+            prove_and_save(&huginn, &format!("state {slot}"), &input, mode, &cli.out).await?;
+        }
         return Ok(());
     }
     let real = tx_input_from_block_file(&cli.block, &cli.signature)?;
@@ -125,7 +134,6 @@ async fn main() -> Result<()> {
         ));
     }
 
-    let huginn = Huginn::from_env().await;
     println!(
         "{:<28} {:>14} {:>14} {:>14}",
         "input", "finality", "inclusion", "total cycles"
@@ -136,32 +144,46 @@ async fn main() -> Result<()> {
             "{name:<28} {:>14} {:>14} {:>14}",
             e.finality_cycles, e.inclusion_cycles, e.total_cycles
         );
-        let Some(mode) = cli.prove else { continue };
-
-        let proven = huginn.prove(&input, mode).await?;
-        // One file name per run: "1000 validators, fast" -> "1000-validators-fast".
-        let slug = name
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .filter(|w| !w.is_empty())
-            .collect::<Vec<_>>()
-            .join("-");
-        let dir = Path::new(&cli.out);
-        std::fs::create_dir_all(dir)?;
-        let bin = dir.join(format!("{slug}.{}.bin", mode.as_str()));
-        proven.proof.save(&bin)?;
-        let summary = dir.join(format!("{slug}.{}.json", mode.as_str()));
-        std::fs::write(
-            &summary,
-            serde_json::to_string_pretty(&proven.summary(&name))? + "\n",
-        )?;
-        println!(
-            "  {} proof: setup {:.1}s, prove {:.1}s, verify {:.2}s -> {}",
-            mode.as_str(),
-            proven.setup_secs,
-            proven.prove_secs,
-            proven.verify_secs,
-            summary.display()
-        );
+        if let Some(mode) = cli.prove {
+            prove_and_save(&huginn, &name, &input, mode, &cli.out).await?;
+        }
     }
+    Ok(())
+}
+
+/// Proves one run, verifies it, and writes the proof and its summary (program key, public
+/// values, onchain proof bytes) to `out`, as `<run>.<mode>.json` and `.bin`.
+async fn prove_and_save(
+    huginn: &Huginn,
+    name: &str,
+    input: &ClaimInput,
+    mode: Mode,
+    out: &str,
+) -> Result<()> {
+    let proven = huginn.prove(input, mode).await?;
+    // One file name per run: "1000 validators, fast" -> "1000-validators-fast".
+    let slug = name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let dir = Path::new(out);
+    std::fs::create_dir_all(dir)?;
+    proven
+        .proof
+        .save(dir.join(format!("{slug}.{}.bin", mode.as_str())))?;
+    let summary = dir.join(format!("{slug}.{}.json", mode.as_str()));
+    std::fs::write(
+        &summary,
+        serde_json::to_string_pretty(&proven.summary(name))? + "\n",
+    )?;
+    println!(
+        "  {} proof: setup {:.1}s, prove {:.1}s, verify {:.2}s -> {}",
+        mode.as_str(),
+        proven.setup_secs,
+        proven.prove_secs,
+        proven.verify_secs,
+        summary.display()
+    );
     Ok(())
 }

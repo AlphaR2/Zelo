@@ -1,15 +1,13 @@
-//! Writes the Solidity test fixture for the StateRegistry from the real state fixture: the
-//! public values a state proof would commit, and an opening (digests, index, Merkle path) for
-//! every changed account. Accounts under 200 bytes are written out in full so contracts can
-//! recompute their digests.
+//! Writes what the destination chain needs for a state claim: the public values the proof
+//! commits, and an opening (digests, index, Merkle path) for every changed account. Accounts
+//! under 200 bytes are written out in full so contracts can recompute their digests.
 //!
-//!   make_state_pv <state_156070.json> <depth> <confirm> <out.json>
+//!   make_state_pv <state_<slot>.json> <depth> <confirm> <out.json> [block file]
+//!
+//! With a block file (`ledger-dump`, for the top block of the ancestry), the claim is certified
+//! by the chain's own certificate; without one, by 7 synthetic validators (test fixtures).
 
-use alpenglow_core::{
-    fixture,
-    proof::{Aggregate, ClaimInput, FinalityInput},
-    state,
-};
+use alpenglow_core::{fixture, state};
 
 fn acct(a: &Option<state::Account>) -> serde_json::Value {
     match a {
@@ -25,35 +23,25 @@ fn main() {
     let f: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&a[1]).unwrap()).unwrap();
     let (depth, confirm): (usize, usize) = (a[2].parse().unwrap(), a[3].parse().unwrap());
-    let fx = fixture::state_fixture(&f, depth, confirm);
-    let base = FinalityInput {
-        validators: vec![],
-        shred_version: fx.shred_version,
-        slot: fx.certified.0,
-        block_id: fx.certified.1,
-        final_aggregate: Aggregate {
-            signature: vec![],
-            bitmap: vec![],
-        },
-        notar_aggregate: None,
+    // The chain's own certificate from a `ledger-dump` block file, or 7 synthetic validators.
+    let block: Option<serde_json::Value> = a
+        .get(5)
+        .map(|p| serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap());
+    let by = match &block {
+        Some(b) => fixture::Certifier::Real(b),
+        None => fixture::Certifier::Synthetic(7),
     };
-    let finality = fixture::synthetic(&base, 7);
-    let input = ClaimInput {
-        finality: finality.clone(),
-        ancestry: fx.links.clone(),
-        tx: None,
-        state: Some(fx.witness.clone()),
-    };
-    let out = input.verify().expect("the real witness verifies");
+    let input = fixture::state_claim(&f, depth, confirm, by);
+    let witness = input.state.clone().unwrap();
+    let shred_version = input.finality.shred_version;
+    let out = input.verify().expect("the witness and certificate verify");
     let claim = out.state.clone().unwrap();
-    let leaves: Vec<_> = fx
-        .witness
+    let leaves: Vec<_> = witness
         .changes
         .iter()
         .map(|c| state::diff_leaf(&c.pubkey, &c.pre, &c.post))
         .collect();
-    let openings: Vec<_> = fx
-        .witness
+    let openings: Vec<_> = witness
         .changes
         .iter()
         .enumerate()
@@ -79,7 +67,7 @@ fn main() {
     let v = serde_json::json!({
         "public_values": hex::encode(out.encode()),
         "validator_set_hash": hex::encode(out.finality.validator_set_hash),
-        "shred_version": fx.shred_version,
+        "shred_version": shred_version,
         "certified_slot": out.finality.slot,
         "slot": out.slot,
         "block_id": hex::encode(out.block_id),
