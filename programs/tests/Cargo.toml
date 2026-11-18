@@ -1,12 +1,13 @@
 [package]
 name = "huginn-programs-tests"
-description = "Runs the compiled outbox and fill programs in Agave's runtime (Mollusk), and the `shards` tool."
+description = "Runs the compiled outbox and fill programs in Agave's runtime (Mollusk); the `shards` tool and the `live` example."
 edition.workspace = true
 license.workspace = true
 version.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# Prints the escrow's shard list.
 [[bin]]
 name = "shards"
 path = "src/shards.rs"
@@ -15,16 +16,26 @@ path = "src/shards.rs"
 huginn-programs.workspace = true
 solana-address = { workspace = true, features = ["decode", "curve25519"] }
 
+# Host only. Dev-dependencies, so `cargo build-sbf` (which builds the workspace with the SBF
+# compiler) never compiles them.
 [dev-dependencies]
 mollusk-svm.workspace = true
 mollusk-svm-programs-token.workspace = true
 solana-account = "5"
+solana-program-error = "3"
+solana-program-option = "3"
 solana-instruction = "4"
 solana-pubkey = "4"
 solana-program-pack = "3"
 spl-token-interface = "3"
-solana-program-error = "3"
-solana-program-option = "3"
+# `examples/live.rs`: the versions Agave 4.4.1's RPC client uses.
+solana-rpc-client = "=4.4.1"
+solana-commitment-config = "3"
+solana-keypair = "4"
+solana-signer = "4"
+solana-transaction = "5"
+solana-system-interface = { version = "3", features = ["bincode"] }
+serde_json = "1"
 
 [lints]
 workspace = true

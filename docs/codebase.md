@@ -160,7 +160,7 @@ A workspace of its own, built for SBF with `cargo build-sbf` (Solana's program f
 | `interface` (`huginn-programs`) | What the programs share with each other and with off-chain code. `outbox`: emitter account layout, `next_chain`, `append`. `fill`: `Order` (parse, encode, `id`, `payload`), `token_account_owner`. `pda`: `check_canonical` (refuse non-canonical bumps) and `create_pda` (works even if someone pre-funded the address). |
 | `outbox` | `emit`: appends a message to the sender's emitter account, creating it at the canonical address the first time. |
 | `fill` | Pays the merchant (`TransferChecked`), creates the "filled" marker, and emits the order's message from a shard PDA. The outbox id is fixed at build time (`HUGINN_OUTBOX_ID`). |
-| `tests` | Mollusk tests: the compiled `.so` files in Agave's runtime with the real SPL Token program. Also the `shards` tool, which prints the escrow's shard list. |
+| `tests` | Mollusk tests: the compiled `.so` files in Agave's runtime with the real SPL Token program. The `shards` tool prints the escrow's shard list; the `live` example fills real orders on a local validator and checks the results. |
 
 **Tests:**
 - 11 unit tests in `interface`. They share reference values with the Solidity escrow's tests, including the order id `784041714c…`.

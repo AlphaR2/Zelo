@@ -110,6 +110,38 @@ cargo test
    HUGINN_OUTBOX_ID=<outbox id> cargo run --bin shards -- <fill id>
    ```
 
+4. Check the deployed programs with real transactions. The `live` example uses fresh keys funded by the local faucet, and only runs against this machine.
+   - `check` fills an order, tries to fill it again, and fills two orders in one block, checking balances, the marker and the emitter account's hash chain:
+     ```bash
+     HUGINN_OUTBOX_ID=<outbox id> cargo run --example live -- <fill id> check
+     ```
+   - `setup` and `fill` fill an order placed on an EVM chain (huginn-evm's `Orders.s.sol place()`, then `fill <order.json> <solver EVM address>`). The order-settlement run is described in huginn-evm's `docs/deploy.md`.
+
+### Proving a fill's block (state witness)
+
+Stop the validator first: `agave-ledger-tool` cannot read a ledger in use. For the fill's slot `S`, replay `S-1` to `S+2` from genesis. The validator's unpacked snapshot folder overrides `--no-snapshot`, so point `--snapshots` at an empty folder:
+
+```bash
+mkdir -p /tmp/nosnap && for s in S-1 S S+1 S+2; do agave-ledger-tool -l .local-ledger verify --no-snapshot --snapshots /tmp/nosnap --halt-at-slot $s --write-bank-file; agave-ledger-tool -l .local-ledger accounts --no-snapshot --snapshots /tmp/nosnap --halt-at-slot $s --include-sysvars --encoding base64 > <work>/accounts_$s.out; done
+```
+
+(Write the four slot numbers out in place of `S-1 S S+1 S+2`.)
+
+Then export the shreds, check every hash, build the witness and the destination's state file:
+
+```bash
+cargo run --release -p ledger-dump -- --export-shreds <S-1>..<S+3> --out <work>
+```
+```bash
+cargo run --release -p alpenglow-core --example check_bank_hash -- <work>/accounts_<s>.out .local-ledger/ledger_tool/bank_hash_details/<s>-*.json <work>/shreds_<s>.json
+```
+```bash
+cargo run --release -p alpenglow-core --example make_state_fixture -- <work> .local-ledger/ledger_tool/bank_hash_details <S> 2 <work>/state_<S>.json
+```
+```bash
+cargo run --release -p alpenglow-core --example make_state_pv -- <work>/state_<S>.json 2 2 <state file>.json
+```
+
 `target/deploy/*-keypair.json` are the programs' address keys. They are gitignored; never share them. Once the programs are final, make them immutable with `solana program set-upgrade-authority <id> --final`.
 
 ---
