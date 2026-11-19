@@ -1,5 +1,5 @@
 [package]
-name = "huginn-programs-tests"
+name = "zelo-programs-tests"
 description = "Runs the compiled outbox and fill programs in Agave's runtime (Mollusk); the `shards` tool and the `live` example."
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ name = "shards"
 path = "src/shards.rs"
 
 [dependencies]
-huginn-programs.workspace = true
+zelo-programs.workspace = true
 solana-address = { workspace = true, features = ["decode", "curve25519"] }
 
 # Host only. Dev-dependencies, so `cargo build-sbf` (which builds the workspace with the SBF

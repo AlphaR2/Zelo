@@ -3,10 +3,10 @@
 //!
 //! Build first, with the same outbox id for the build and the tests:
 //!
-//!   HUGINN_OUTBOX_ID=<id> cargo build-sbf && HUGINN_OUTBOX_ID=<id> cargo test
+//!   ZELO_OUTBOX_ID=<id> cargo build-sbf && ZELO_OUTBOX_ID=<id> cargo test
 
 use {
-    huginn_programs::{
+    zelo_programs::{
         fill::{FillError, MARKER_SEED, Order, SHARD_SEED},
         outbox::{OutboxError, STATE_LEN, next_chain, state_address},
     },
@@ -26,7 +26,7 @@ use {
     spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
 };
 
-const OUTBOX: Pubkey = Pubkey::from_str_const(env!("HUGINN_OUTBOX_ID"));
+const OUTBOX: Pubkey = Pubkey::from_str_const(env!("ZELO_OUTBOX_ID"));
 const FILL: Pubkey = Pubkey::new_from_array([0xF1; 32]);
 const NOW: i64 = 1_800_000_000;
 const DECIMALS: u8 = 6;
@@ -40,8 +40,8 @@ fn elf(name: &str) -> Vec<u8> {
 
 fn mollusk() -> Mollusk {
     let mut m = Mollusk::default();
-    m.add_program_with_loader_and_elf(&OUTBOX, &loader_keys::LOADER_V3, &elf("huginn_outbox"));
-    m.add_program_with_loader_and_elf(&FILL, &loader_keys::LOADER_V3, &elf("huginn_fill"));
+    m.add_program_with_loader_and_elf(&OUTBOX, &loader_keys::LOADER_V3, &elf("zelo_outbox"));
+    m.add_program_with_loader_and_elf(&FILL, &loader_keys::LOADER_V3, &elf("zelo_fill"));
     token::add_program(&mut m);
     m.sysvars.clock.unix_timestamp = NOW;
     m

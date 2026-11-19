@@ -1,5 +1,5 @@
 [package]
-name = "huginn-program"
+name = "zelo-program"
 description = "SP1 guest: proves a Solana block is final (Alpenglow certificate) and that given shreds are its contents."
 version = "0.1.0"
 edition = "2024"

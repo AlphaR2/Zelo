@@ -101,6 +101,7 @@ fn finds_the_memo_transfer_byte_for_byte() {
         .iter()
         .find(|ix| tx.program_id(ix) != Some(&system))
         .unwrap();
+    // Recorded before the rename to Zelo: the fixture's signed bytes carry the old memo.
     assert_eq!(memo_ix.data, b"huginn: hello from solana");
 }
 

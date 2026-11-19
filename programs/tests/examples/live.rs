@@ -1,22 +1,22 @@
 //! Real transactions against the outbox and fill programs on a local validator.
 //!
-//!   HUGINN_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> check
-//!   HUGINN_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> setup
-//!   HUGINN_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> fill <order.json> <solver EVM address>
+//!   ZELO_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> check
+//!   ZELO_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> setup
+//!   ZELO_OUTBOX_ID=<outbox id> cargo run --example live -- <fill program id> fill <order.json> <solver EVM address>
 //!
 //! - `check` fills an order, tries to fill it again, and fills two orders in one transaction (so
 //!   one block), checking balances, the marker and the emitter account's hash chain.
 //! - `setup` creates a test mint, a solver holding tokens and a merchant's token account, for an
 //!   order placed on an EVM chain. It saves them in `target/live-setup.json` (the solver's key in
 //!   `target/live-solver-keypair.json`, gitignored) and prints MINT and MERCHANT for the order.
-//! - `fill` fills the order in `order.json` (written by huginn-evm's `Orders.s.sol place()`) for
+//! - `fill` fills the order in `order.json` (written by zelo-evm's `Orders.s.sol place()`) for
 //!   the given solver, and writes the slot, signature and message to `target/live-fill.json`.
 //!
 //! Every key is a fresh one funded by the local faucet (`requestAirdrop`); no wallet of yours is
 //! used. Only an RPC on this machine is accepted (`LIVE_RPC`, default http://127.0.0.1:8899).
 
 use {
-    huginn_programs::{
+    zelo_programs::{
         fill::{MARKER_SEED, Order, SHARD_SEED},
         outbox::{STATE_LEN, next_chain, state_address},
     },
@@ -409,8 +409,8 @@ fn run_fill(live: &Live, order_file: &str, solver_evm: &str) {
 
 fn main() {
     let outbox = pubkey(
-        &std::env::var("HUGINN_OUTBOX_ID").expect("set HUGINN_OUTBOX_ID"),
-        "HUGINN_OUTBOX_ID",
+        &std::env::var("ZELO_OUTBOX_ID").expect("set ZELO_OUTBOX_ID"),
+        "ZELO_OUTBOX_ID",
     );
     let args: Vec<String> = std::env::args().collect();
     let usage =

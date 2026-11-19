@@ -1,5 +1,5 @@
 [package]
-name = "huginn-fill"
+name = "zelo-fill"
 description = "Pays a merchant on Solana and leaves a provable message for the escrow on another chain."
 edition.workspace = true
 license.workspace = true
@@ -11,10 +11,10 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-huginn-programs.workspace = true
+zelo-programs.workspace = true
 pinocchio.workspace = true
 pinocchio-token.workspace = true
-# `decode`: the outbox id is read from base58 at compile time (`HUGINN_OUTBOX_ID`).
+# `decode`: the outbox id is read from base58 at compile time (`ZELO_OUTBOX_ID`).
 solana-address = { workspace = true, features = ["decode"] }
 
 [target.'cfg(not(target_os = "solana"))'.dependencies]

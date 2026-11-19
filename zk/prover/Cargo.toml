@@ -1,6 +1,6 @@
 [package]
-name = "huginn-prover"
-description = "Proves that a Solana transaction is in a finalized Alpenglow block (SP1). Library for destination apps, plus the `huginn` CLI."
+name = "zelo-prover"
+description = "Proves that a Solana transaction is in a finalized Alpenglow block (SP1). Library for destination apps, plus the `zelo` CLI."
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -9,10 +9,10 @@ publish = false
 [workspace]
 
 [lib]
-name = "huginn_prover"
+name = "zelo_prover"
 
 [[bin]]
-name = "huginn"
+name = "zelo"
 path = "src/main.rs"
 
 [dependencies]
@@ -41,7 +41,7 @@ network = ["sp1-sdk/network"]
 sp1-build = "=6.10.0"
 
 # Same curve code as the program and the main workspace (alpenglow-core builds here too,
-# for the native cross-check of every run). Crates that depend on huginn-prover need this
+# for the native cross-check of every run). Crates that depend on zelo-prover need this
 # patch too.
 [patch.crates-io]
 bls12_381 = { git = "https://github.com/sp1-patches/bls12_381", tag = "patch-0.8.0-sp1-6.10.0" }

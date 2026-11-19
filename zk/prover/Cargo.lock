@@ -3140,24 +3140,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
-name = "huginn-prover"
-version = "0.1.0"
-dependencies = [
- "alpenglow-core",
- "anyhow",
- "bs58",
- "clap",
- "hex",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sp1-build",
- "sp1-sdk",
- "sp1-verifier",
- "tokio",
-]
-
-[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7995,6 +7977,24 @@ dependencies = [
  "quote",
  "syn 3.0.10",
  "synstructure",
+]
+
+[[package]]
+name = "zelo-prover"
+version = "0.1.0"
+dependencies = [
+ "alpenglow-core",
+ "anyhow",
+ "bs58",
+ "clap",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sp1-build",
+ "sp1-sdk",
+ "sp1-verifier",
+ "tokio",
 ]
 
 [[package]]

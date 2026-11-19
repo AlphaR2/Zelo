@@ -349,5 +349,6 @@ pub fn state_claim(f: &Value, depth: usize, confirm: usize, by: Certifier) -> Cl
         ancestry,
         tx: None,
         state: Some(fx.witness),
+        summarize: false,
     }
 }

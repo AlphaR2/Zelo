@@ -1,12 +1,12 @@
-//! Huginn prover: proves "this Solana transaction is in a block finalized by this
+//! Zelo prover: proves "this Solana transaction is in a block finalized by this
 //! validator set" with SP1, for any destination chain.
 //!
-//! A destination app (for example `huginn-evm`) depends on this crate:
+//! A destination app (for example `zelo-evm`) depends on this crate:
 //!
 //! ```ignore
-//! let input = huginn_prover::tx_input_from_block_file("block_46718.json", "4F39ig6…")?;
-//! let huginn = huginn_prover::Huginn::from_env().await;
-//! let proven = huginn.prove(&input, Mode::Groth16).await?;
+//! let input = zelo_prover::tx_input_from_block_file("block_46718.json", "4F39ig6…")?;
+//! let zelo = zelo_prover::Zelo::from_env().await;
+//! let proven = zelo.prove(&input, Mode::Groth16).await?;
 //! // proven.public_values and proven.onchain_proof go to the destination's verifier.
 //! ```
 //!
@@ -31,8 +31,8 @@ use {
 
 pub use alpenglow_core;
 
-/// The Huginn SP1 program (`zk/program`), compiled by this crate's build script.
-pub const ELF: Elf = include_elf!("huginn-program");
+/// The Zelo SP1 program (`zk/program`), compiled by this crate's build script.
+pub const ELF: Elf = include_elf!("zelo-program");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -108,13 +108,13 @@ impl Proven {
     }
 }
 
-pub struct Huginn {
+pub struct Zelo {
     client: EnvProver,
 }
 
-impl Huginn {
+impl Zelo {
     pub async fn from_env() -> Self {
-        Huginn {
+        Zelo {
             client: ProverClient::from_env().await,
         }
     }
@@ -197,7 +197,7 @@ impl Huginn {
         })
     }
 
-    /// With `SP1_PROVER=network`, sends the request with Huginn's auction settings
+    /// With `SP1_PROVER=network`, sends the request with Zelo's auction settings
     /// ([`network_settings`]) instead of the SDK's defaults. `None` for every other prover.
     #[cfg(feature = "network")]
     async fn prove_on_network(
@@ -344,6 +344,7 @@ pub fn tx_input_from_block_file(block: impl AsRef<Path>, signature: &str) -> Res
         ancestry: fixture::ancestry(&json),
         tx: Some(inclusion),
         state: None,
+        summarize: false,
     })
 }
 

@@ -13,6 +13,26 @@ pub fn redact_url(url: &str) -> String {
     format!("{scheme}://{host}{}", if had_more { "/…" } else { "" })
 }
 
+/// Public block explorers: their links name a transaction, block or account, never a key, so
+/// they are kept whole (a cut link can't be followed to check anything).
+const PUBLIC_EXPLORERS: [&str; 7] = [
+    "explorer.solana.com",
+    "solscan.io",
+    "basescan.org",
+    "sepolia.basescan.org",
+    "etherscan.io",
+    "sepolia.etherscan.io",
+    "solana.fm",
+];
+
+fn is_public_explorer(url: &str) -> bool {
+    let Some((_, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !authority.contains('@') && PUBLIC_EXPLORERS.contains(&authority)
+}
+
 /// Replace every URL inside free text (error messages, logs) with its redacted form.
 /// ureq and friends put the full URL in their error strings, so call this on any
 /// error before it is shown.
@@ -27,7 +47,12 @@ pub fn redact_text(text: &str) -> String {
                 c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']' | '}' | ',')
             })
             .unwrap_or(tail.len());
-        out.push_str(&redact_url(&tail[..end]));
+        let url = &tail[..end];
+        if is_public_explorer(url) {
+            out.push_str(url);
+        } else {
+            out.push_str(&redact_url(url));
+        }
         rest = &tail[end..];
     }
     out.push_str(rest);
@@ -125,5 +150,21 @@ mod tests {
         let r = redact_text("a https://a.io/k1 → b (http://b.io:1/k2?x=1) é");
         assert!(!r.contains("k1") && !r.contains("k2"), "{r}");
         assert!(r.contains("é"), "{r}");
+    }
+
+    #[test]
+    fn public_explorer_links_stay_whole_and_rpcs_do_not() {
+        let tx = "https://explorer.solana.com/tx/5abc?cluster=devnet";
+        let base = "https://sepolia.basescan.org/tx/0x1234";
+        assert_eq!(
+            redact_text(&format!("see {tx} and {base}")),
+            format!("see {tx} and {base}")
+        );
+        // Same host shapes used as an RPC with a key, or with user info, are still cut.
+        assert!(!redact_text("https://devnet.helius-rpc.com/?api-key=K1").contains("K1"));
+        assert!(!redact_text("https://u:pw@explorer.solana.com/x").contains("pw"));
+        assert!(!redact_text("https://explorer.solana.com.evil.io/k").contains("/k"));
+        // A key-value pair inside an explorer link is still blanked.
+        assert!(!redact_text("https://explorer.solana.com/?api-key=K2").contains("K2"));
     }
 }

@@ -437,7 +437,7 @@ impl Tx {
             sigs: 1,
             header: [1, 0, 1],
             keys: vec![[7; 32], MEMO],
-            ixs: vec![(1, vec![0], b"huginn:1:greeter:hi".to_vec())],
+            ixs: vec![(1, vec![0], b"zelo:1:greeter:hi".to_vec())],
             v0: None,
             lookups: vec![],
         }
@@ -500,7 +500,7 @@ fn parser_accepts_the_valid_baseline_and_reads_what_was_written() {
     let t = &e[0].transactions[0];
     assert_eq!(t.signers(), &[[7u8; 32]]);
     assert_eq!(t.program_id(&t.instructions[0]), Some(&MEMO));
-    assert_eq!(t.instructions[0].data, b"huginn:1:greeter:hi");
+    assert_eq!(t.instructions[0].data, b"zelo:1:greeter:hi");
 }
 
 #[test]
@@ -697,7 +697,7 @@ fn entry_of(txs: &[&[u8]]) -> Vec<u8> {
     c
 }
 
-/// FIXED (finding 4). Before: one transaction Huginn couldn't parse made its whole
+/// FIXED (finding 4). Before: one transaction Zelo couldn't parse made its whole
 /// component unparseable, so its neighbours were unprovable. v1 transactions (SIMD-0385)
 /// are live on mainnet since epoch 1035, so this was a real censorship vector.
 /// Now v1 parses, and a component is parsed only up to the target transaction.
@@ -727,7 +727,7 @@ fn fixed_a_neighbouring_transaction_no_longer_blocks_the_target() {
 /// What's left: bytes no parser knows BEFORE the target still hide it, because the target's
 /// start can't be found without reading past them. Such bytes can't be in a finalized
 /// block (Agave couldn't have replayed it), so this only bites if Solana adds a new
-/// transaction format that Huginn doesn't know yet. The v1 test above is that case for v1.
+/// transaction format that Zelo doesn't know yet. The v1 test above is that case for v1.
 #[test]
 fn an_unknown_format_before_the_target_still_hides_it() {
     let good = Tx::valid().bytes();
@@ -738,7 +738,7 @@ fn an_unknown_format_before_the_target_still_hides_it() {
 
 #[test]
 fn v1_transaction_fields_and_signed_message() {
-    let b = v1_tx(b"huginn:1:0xabc:1:hi");
+    let b = v1_tx(b"zelo:1:0xabc:1:hi");
     let c = entry_of(&[&b]);
     let Component::Entries(entries) = block::parse_component(&c).unwrap() else {
         panic!()
@@ -755,7 +755,7 @@ fn v1_transaction_fields_and_signed_message() {
             t.instructions[0].accounts,
             t.instructions[0].data
         ),
-        (1, &[0u8][..], &b"huginn:1:0xabc:1:hi"[..])
+        (1, &[0u8][..], &b"zelo:1:0xabc:1:hi"[..])
     );
     // The signature signs everything before it, the 0x81 byte included.
     assert_eq!(t.message, &b[..b.len() - 64]);
@@ -821,6 +821,7 @@ fn v1_transaction_written_by_agave() {
         vec![[0xa1; 32], [0xb2; 32], [0xc3; 32], MEMO]
     );
     assert_eq!(t.recent_blockhash, [0x77; 32]);
+    // Recorded before the rename to Zelo: Agave's bytes carry the old memo.
     assert_eq!(
         t.instructions[0].data,
         b"huginn: hello from a v1 transaction"

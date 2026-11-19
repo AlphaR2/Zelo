@@ -1462,61 +1462,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
-name = "huginn-fill"
-version = "0.1.0"
-dependencies = [
- "huginn-programs",
- "pinocchio",
- "pinocchio-token",
- "solana-address 2.9.0",
-]
-
-[[package]]
-name = "huginn-outbox"
-version = "0.1.0"
-dependencies = [
- "huginn-programs",
- "pinocchio",
- "solana-address 2.9.0",
- "solana-program-log",
-]
-
-[[package]]
-name = "huginn-programs"
-version = "0.1.0"
-dependencies = [
- "pinocchio",
- "pinocchio-system",
- "solana-address 2.9.0",
- "solana-keccak-hasher",
- "solana-sha256-hasher",
-]
-
-[[package]]
-name = "huginn-programs-tests"
-version = "0.1.0"
-dependencies = [
- "huginn-programs",
- "mollusk-svm",
- "mollusk-svm-programs-token",
- "serde_json",
- "solana-account",
- "solana-address 2.9.0",
- "solana-commitment-config",
- "solana-instruction 4.0.0",
- "solana-keypair",
- "solana-program-error",
- "solana-program-option",
- "solana-program-pack",
- "solana-pubkey 4.4.0",
- "solana-rpc-client",
- "solana-signer",
- "solana-system-interface",
- "solana-transaction",
- "spl-token-interface",
-]
-
-[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5593,6 +5538,61 @@ dependencies = [
  "quote",
  "syn 3.0.10",
  "synstructure",
+]
+
+[[package]]
+name = "zelo-fill"
+version = "0.1.0"
+dependencies = [
+ "pinocchio",
+ "pinocchio-token",
+ "solana-address 2.9.0",
+ "zelo-programs",
+]
+
+[[package]]
+name = "zelo-outbox"
+version = "0.1.0"
+dependencies = [
+ "pinocchio",
+ "solana-address 2.9.0",
+ "solana-program-log",
+ "zelo-programs",
+]
+
+[[package]]
+name = "zelo-programs"
+version = "0.1.0"
+dependencies = [
+ "pinocchio",
+ "pinocchio-system",
+ "solana-address 2.9.0",
+ "solana-keccak-hasher",
+ "solana-sha256-hasher",
+]
+
+[[package]]
+name = "zelo-programs-tests"
+version = "0.1.0"
+dependencies = [
+ "mollusk-svm",
+ "mollusk-svm-programs-token",
+ "serde_json",
+ "solana-account",
+ "solana-address 2.9.0",
+ "solana-commitment-config",
+ "solana-instruction 4.0.0",
+ "solana-keypair",
+ "solana-program-error",
+ "solana-program-option",
+ "solana-program-pack",
+ "solana-pubkey 4.4.0",
+ "solana-rpc-client",
+ "solana-signer",
+ "solana-system-interface",
+ "solana-transaction",
+ "spl-token-interface",
+ "zelo-programs",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
-# How Huginn works
+# How Zelo works
 
-Huginn lets a contract on another chain (Base first, any EVM chain the same way) learn two things about Solana, trusting only Solana's validators:
+Zelo lets a contract on another chain (Base first, any EVM chain the same way) learn two things about Solana, trusting only Solana's validators:
 
 1. **a transaction is in a finalized block**, with its exact bytes: who signed it, which programs it called, with what data;
 2. **what a finalized block changed**: "account X went from these bytes to these bytes", or "account X did not change".
@@ -33,15 +33,15 @@ Under Alpenglow, a block is **final** (it will never be reverted) when either:
 - **fast path:** validators holding 80% of the stake *notarized* it, in one certificate;
 - **slow path:** 60% notarized it **and** 60% *finalized* its slot, in two certificates.
 
-The certificates are not published by RPC. They travel inside blocks: every block ends with a **footer**, and a footer carries a certificate for some earlier block. Huginn reads them straight from shreds, so it needs no special data feed.
+The certificates are not published by RPC. They travel inside blocks: every block ends with a **footer**, and a footer carries a certificate for some earlier block. Zelo reads them straight from shreds, so it needs no special data feed.
 
-Huginn checks a certificate the way Agave (Solana's validator software) does:
+Zelo checks a certificate the way Agave (Solana's validator software) does:
 1. decode the bitmap of signers;
 2. look up each signer's BLS key and stake in the **validator set** for the certified slot's epoch;
 3. add up their keys and verify the merged signature over the exact vote bytes, which include the slot, the block_id and the cluster's **shred version** (a number that tells devnet from mainnet);
 4. check that the signers' stake meets the threshold, with exact integer arithmetic.
 
-On the slow path the *Finalize* vote names only a slot, not a block. Huginn requires the *Notarize* certificate too, because that is the one that binds the block_id. Skipping it is a known trap.
+On the slow path the *Finalize* vote names only a slot, not a block. Zelo requires the *Notarize* certificate too, because that is the one that binds the block_id. Skipping it is a known trap.
 
 **Where the validator set comes from.** The destination contract stores a hash of each epoch's set: every member's BLS key and stake in rank order. The proof says which set it used; the contract compares hashes. Today the set is posted by the contract's owner, after a public delay. Proving the epoch-to-epoch handover is designed but not built (see [`security.md`](security.md)).
 
@@ -49,7 +49,7 @@ On the slow path the *Finalize* vote names only a slot, not a block. Huginn requ
 
 A footer certifies only the **newest** block its leader knows to be final. So some blocks never appear in any footer: about one in four in a devnet sample. They are still final, because finalizing a block finalizes all its ancestors.
 
-Huginn proves them through a certified **descendant** D. A block_id includes its parent's slot and block_id, so given each block's FEC roots, Huginn rebuilds the block_ids from D down to the target, one link per block. The slots must strictly decrease, and there are at most 64 links. The output names both blocks: the certified one and the target.
+Zelo proves them through a certified **descendant** D. A block_id includes its parent's slot and block_id, so given each block's FEC roots, Zelo rebuilds the block_ids from D down to the target, one link per block. The slots must strictly decrease, and there are at most 64 links. The output names both blocks: the certified one and the target.
 
 ---
 
@@ -57,7 +57,7 @@ Huginn proves them through a certified **descendant** D. A block_id includes its
 
 A leader writes a block as a sequence of **components**: *entry batches*, which hold the transactions, and a few *markers* (a header, the footer). Each component is split across consecutive data shreds; the last one carries a DATA_COMPLETE flag.
 
-Every shred carries a Merkle path to its FEC set's root, and the roots rebuild the block_id. To prove a transaction, Huginn takes:
+Every shred carries a Merkle path to its FEC set's root, and the roots rebuild the block_id. To prove a transaction, Zelo takes:
 - all of the block's FEC roots (32 bytes each), which must rebuild the certified block_id;
 - only the shreds of the **one component** that holds the transaction, each proven against its FEC root;
 - the single shred **before** them, which must carry DATA_COMPLETE, so the run starts on a real component boundary and cannot be read "out of frame".
@@ -67,6 +67,8 @@ It then joins the shreds and parses the component **up to** the transaction, whi
 **Signatures are checked in the proof.** Each Ed25519 signature is verified strictly, as Agave's signature check does. Relying on Solana's replay is not enough. Under fast leader handover, the part of a block before an *UpdateParent* marker is never replayed, yet it is covered by the block_id. A transaction there could claim any signer.
 
 **Inclusion is not success.** A failed transaction is still in its block (it pays its fee). To act only on things that really happened, prove **state** instead (next section).
+
+**A summary instead of the bytes.** The proof can hand the destination a *summary* of the transaction instead of its bytes: who signed it and, for each instruction, its program and the sha256 hash of its data. Every check is the same. This is for publishing data: the data itself stays on Solana, where anyone can download it, and the destination keeps only its hash. Publishing needs inclusion only, since a failed transaction still carries its data in a finalized block.
 
 ---
 
@@ -116,7 +118,7 @@ A proof may carry both claims. The exact offsets are in [`reference.md`](referen
 
 ## 6. On the destination chain
 
-In [`huginn-evm`](https://github.com/AlphaR2/huginn-evm):
+In [`zelo-evm`](https://github.com/AlphaR2/zelo-evm):
 - **`SolanaLightClient`** checks a proof against the pinned program key, the cluster's shred version, and the validator set stored for the certified block's epoch. It then records the transaction, so apps can ask "was this signature in a finalized block?".
 - **`StateRegistry`** checks a proof with a change-set claim and stores `(block, bank hash, diff root, depth)`, keyed by validator set and slot. A conflicting record is refused; depth only rises. Apps then call `open` (membership) or `proveUnchanged` (non-membership) with a Merkle path.
 - **`SolanaControlled`** is a base contract that a Solana key controls through signed memo transactions.

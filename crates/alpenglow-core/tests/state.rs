@@ -41,6 +41,7 @@ fn input(depth: usize, confirm: usize) -> (ClaimInput, StateFixture) {
         ancestry: fx.links.clone(),
         tx: None,
         state: Some(fx.witness.clone()),
+        summarize: false,
     };
     (input, fx)
 }

@@ -53,7 +53,7 @@ fn real_devnet_block_rebuilds_its_certified_block_id() {
 
 #[test]
 fn a_flipped_byte_in_any_devnet_shred_breaks_it() {
-    let dir = std::env::temp_dir().join(format!("huginn-devnet-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("zelo-devnet-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     for slot in [SLOT, SLOT + 1] {
         std::fs::copy(

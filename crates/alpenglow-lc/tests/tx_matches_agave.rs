@@ -2,8 +2,8 @@
 //! (solana-transaction 5.1.0: wincode `deserialize_exact`, the format block entries use, then
 //! `sanitize`), and read the same fields and the same signed message. Legacy, v0 and v1.
 //!
-//! Why it matters: a transaction Agave accepts but Huginn refuses can sit in a finalized
-//! block and make the transactions around it unprovable (review finding 4). One Huginn
+//! Why it matters: a transaction Agave accepts but Zelo refuses can sit in a finalized
+//! block and make the transactions around it unprovable (review finding 4). One Zelo
 //! accepts but Agave refuses can't be in a finalized block, but is checked anyway.
 use alpenglow_core::block::{self, Component};
 use solana_transaction::versioned::VersionedTransaction;
@@ -207,7 +207,7 @@ fn agave(b: &[u8]) -> Result<Fields, String> {
     ))
 }
 
-fn huginn(b: &[u8]) -> Result<Fields, String> {
+fn zelo(b: &[u8]) -> Result<Fields, String> {
     let mut c = 1u64.to_le_bytes().to_vec();
     c.extend_from_slice(&1u64.to_le_bytes());
     c.extend_from_slice(&[0; 32]);
@@ -251,15 +251,15 @@ fn parser_agrees_with_agave_on_random_and_mutated_transactions() {
         if r.chance(4) {
             mutate(&mut r, &mut b);
         }
-        match (agave(&b), huginn(&b)) {
+        match (agave(&b), zelo(&b)) {
             (Ok(a), Ok(h)) => {
                 ok += 1;
                 v1_ok += (a.0 == Some(1)) as u32;
                 assert_eq!(a, h, "fields differ for {}", hex(&b));
             }
             (Err(_), Err(_)) => {}
-            (Err(a), Ok(_)) => panic!("Huginn accepts what Agave refuses ({a}): {}", hex(&b)),
-            (Ok(_), Err(h)) => panic!("Agave accepts what Huginn refuses ({h}): {}", hex(&b)),
+            (Err(a), Ok(_)) => panic!("Zelo accepts what Agave refuses ({a}): {}", hex(&b)),
+            (Ok(_), Err(h)) => panic!("Agave accepts what Zelo refuses ({h}): {}", hex(&b)),
         }
     }
     // The generator must keep reaching valid transactions of every kind.

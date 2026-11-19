@@ -1,4 +1,4 @@
-//! `huginn`: runs the Huginn program on the real local transaction, then with the same
+//! `zelo`: runs the Zelo program on the real local transaction, then with the same
 //! transaction finalized by synthetic validator sets of chosen sizes, and reports cycles.
 //! Every run is also verified natively; the committed public values must match.
 //!
@@ -19,7 +19,7 @@ use {
     alpenglow_core::{fixture, proof::ClaimInput},
     anyhow::Result,
     clap::Parser,
-    huginn_prover::{Huginn, Mode, alpenglow_core, tx_input_from_block_file},
+    zelo_prover::{Zelo, Mode, alpenglow_core, tx_input_from_block_file},
     std::path::Path,
 };
 
@@ -67,7 +67,7 @@ struct Cli {
 async fn main() -> Result<()> {
     sp1_sdk::utils::setup_logger();
     let cli = Cli::parse();
-    let huginn = Huginn::from_env().await;
+    let zelo = Zelo::from_env().await;
     if let Some(path) = &cli.state {
         let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
         let block: Option<serde_json::Value> = match &cli.certificate {
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
             None => fixture::Certifier::Synthetic(cli.validators),
         };
         let input = fixture::state_claim(&f, cli.depth, cli.confirm, by);
-        let e = huginn.execute(&input).await?;
+        let e = zelo.execute(&input).await?;
         println!(
             "state claim, {} changed accounts, {} ancestry link(s), {} footer(s) opened, {} validator(s){}: read {} + finality {} + claims {}, total {} cycles",
             input.state.as_ref().unwrap().changes.len(),
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
         );
         if let Some(mode) = cli.prove {
             let slot = f["slot"].as_u64().unwrap_or_default();
-            prove_and_save(&huginn, &format!("state {slot}"), &input, mode, &cli.out).await?;
+            prove_and_save(&zelo, &format!("state {slot}"), &input, mode, &cli.out).await?;
         }
         return Ok(());
     }
@@ -139,13 +139,13 @@ async fn main() -> Result<()> {
         "input", "finality", "inclusion", "total cycles"
     );
     for (name, input) in runs {
-        let e = huginn.execute(&input).await?;
+        let e = zelo.execute(&input).await?;
         println!(
             "{name:<28} {:>14} {:>14} {:>14}",
             e.finality_cycles, e.inclusion_cycles, e.total_cycles
         );
         if let Some(mode) = cli.prove {
-            prove_and_save(&huginn, &name, &input, mode, &cli.out).await?;
+            prove_and_save(&zelo, &name, &input, mode, &cli.out).await?;
         }
     }
     Ok(())
@@ -154,13 +154,13 @@ async fn main() -> Result<()> {
 /// Proves one run, verifies it, and writes the proof and its summary (program key, public
 /// values, onchain proof bytes) to `out`, as `<run>.<mode>.json` and `.bin`.
 async fn prove_and_save(
-    huginn: &Huginn,
+    zelo: &Zelo,
     name: &str,
     input: &ClaimInput,
     mode: Mode,
     out: &str,
 ) -> Result<()> {
-    let proven = huginn.prove(input, mode).await?;
+    let proven = zelo.prove(input, mode).await?;
     // One file name per run: "1000 validators, fast" -> "1000-validators-fast".
     let slug = name
         .split(|c: char| !c.is_ascii_alphanumeric())

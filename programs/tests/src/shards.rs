@@ -1,10 +1,10 @@
 //! Prints the escrow's shard list. For each fill shard: the outbox emitter account (the escrow
 //! stores it as 32-byte hex), the same in base58, and the `state_bump` a fill instruction carries.
 //!
-//!   HUGINN_OUTBOX_ID=<outbox id> cargo run --bin shards -- <fill program id>
+//!   ZELO_OUTBOX_ID=<outbox id> cargo run --bin shards -- <fill program id>
 
 use {
-    huginn_programs::{
+    zelo_programs::{
         fill::{SHARD_SEED, SHARDS},
         outbox::state_address,
     },
@@ -18,8 +18,8 @@ fn address(s: &str, what: &str) -> Address {
 
 fn main() {
     let outbox = address(
-        &std::env::var("HUGINN_OUTBOX_ID").expect("set HUGINN_OUTBOX_ID to the outbox program id"),
-        "HUGINN_OUTBOX_ID",
+        &std::env::var("ZELO_OUTBOX_ID").expect("set ZELO_OUTBOX_ID to the outbox program id"),
+        "ZELO_OUTBOX_ID",
     );
     let fill = address(
         &std::env::args()

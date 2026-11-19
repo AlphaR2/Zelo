@@ -1,6 +1,6 @@
 //! Block fixtures from any **shred source**.
 //!
-//! Shreds are all Huginn needs: block S's shreds hold its transactions, and its child's
+//! Shreds are all Zelo needs: block S's shreds hold its transactions, and its child's
 //! footer holds the certificate that finalized it. So a data source only has to
 //! answer "the shreds of slot S" ([`ShredSource`]); building and checking the fixture is
 //! the same for every source ([`build_fixture`]).

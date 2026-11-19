@@ -1,5 +1,5 @@
 //! The fill program: a solver pays a merchant on Solana, and the escrow on another chain repays
-//! the solver, trusting only Solana's validators (through a Huginn state proof).
+//! the solver, trusting only Solana's validators (through a Zelo state proof).
 //!
 //! One instruction. In a single transaction it:
 //! 1. computes the order id from the order's fields, as the escrow does. The id covers
@@ -12,7 +12,7 @@
 //! 5. emits the 124-byte message through the outbox, from one of 16 shard PDAs of this program.
 //!
 //! If any step fails, the transaction fails and nothing is emitted. Nothing closes or changes a
-//! marker. Deploy the program immutable. Layouts: [`huginn_programs::fill`].
+//! marker. Deploy the program immutable. Layouts: [`zelo_programs::fill`].
 //!
 //! **Canonical addresses only**: the marker and the shard are checked with
 //! `find_program_address`, or one order could get two markers and be filled twice. The outbox
@@ -27,13 +27,13 @@
 //!   5. `[writable]`          the marker PDA `["filled", order_id]`
 //!   6. `[]`                  the shard PDA `["shard", shard]` (signs for the outbox)
 //!   7. `[writable]`          the shard's emitter account in the outbox
-//!   8. `[]`                  the outbox program (fixed at build time by `HUGINN_OUTBOX_ID`)
+//!   8. `[]`                  the outbox program (fixed at build time by `ZELO_OUTBOX_ID`)
 //!   9. `[]`                  the system program
 
 #![cfg_attr(target_os = "solana", no_std)]
 
 use {
-    huginn_programs::{
+    zelo_programs::{
         fill::{
             FillError, MARKER_SEED, MINT_DECIMALS, MINT_LEN, Order, PAYLOAD_LEN, SHARD_SEED,
             token_account_owner,
@@ -50,8 +50,8 @@ use {
     pinocchio_token::instructions::TransferChecked,
 };
 
-/// The outbox program this build trusts (`HUGINN_OUTBOX_ID`, base58, at build time).
-pub const OUTBOX_ID: Address = Address::from_str_const(env!("HUGINN_OUTBOX_ID"));
+/// The outbox program this build trusts (`ZELO_OUTBOX_ID`, base58, at build time).
+pub const OUTBOX_ID: Address = Address::from_str_const(env!("ZELO_OUTBOX_ID"));
 
 pub fn process(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     let order = Order::parse(data)?;

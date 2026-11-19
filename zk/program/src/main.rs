@@ -1,4 +1,4 @@
-//! Huginn's zkVM program. Reads a `ClaimInput` (a finality certificate, the parent links to
+//! Zelo's zkVM program. Reads a `ClaimInput` (a finality certificate, the parent links to
 //! the block in question, and claims about that block: a transaction in it, its change set), runs exactly the checks the native tests run, and commits the public values
 //! in their fixed byte layout. If any check fails the program panics, so no proof exists.
 

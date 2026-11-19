@@ -1,9 +1,9 @@
-//! The outbox: a message box that other chains read through a Huginn state proof.
+//! The outbox: a message box that other chains read through a Zelo state proof.
 //!
 //! `emit(payload)` appends one message to the sender's **emitter account**, a PDA of this
 //! program at `["emitter", emitter]`. The sender is a wallet, or a program's PDA that the program
 //! signs for. The account holds a hash chain of every message (layout in
-//! [`huginn_programs::outbox`]).
+//! [`zelo_programs::outbox`]).
 //!
 //! A failed transaction changes nothing, so an account's value proves that every message in its
 //! chain came from a transaction that succeeded. A state proof shows the account before and after
@@ -31,7 +31,7 @@
 #![cfg_attr(target_os = "solana", no_std)]
 
 use {
-    huginn_programs::{
+    zelo_programs::{
         outbox::{EMITTER_SEED, MAX_PAYLOAD, OutboxError, STATE_LEN, append, state_address},
         pda::create_pda,
     },

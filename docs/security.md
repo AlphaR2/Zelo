@@ -6,7 +6,7 @@
 
 | Who | Can they forge a proof? |
 |---|---|
-| Anyone with shreds and certificates | No. The certificate pins `block_id`; Huginn rebuilds it. |
+| Anyone with shreds and certificates | No. The certificate pins `block_id`; Zelo rebuilds it. |
 | A relayer | No. They can delay or reorder relays, not change what is proven. `SolanaControlled`'s nonce fixes the order. |
 | Less than 20% malicious Solana stake | No (Alpenglow's assumption). |
 | The light client's owner | **Yes, after the public delay**, by proposing a validator set whose keys they hold. This is the remaining root of trust. |
@@ -18,11 +18,11 @@
 - **Cancel is a race.** A signed command is public once final; anyone can relay it before a cancel's proof exists. Make revocable commands conditional inside the contract.
 - **A failing command does not stall the queue.** It logs `CommandFailed` and spends its nonce; sign it again to retry. A gas guard makes a relayer who starves a command revert the whole call instead of spending its nonce.
 - **Transaction formats.** Legacy, v0 and v1 are parsed and match Agave on millions of random inputs. A future format placed before a target would hide it until the parser is updated.
-- **Program key.** The program key is a hash of the compiled program, and every destination contract pins it, so anyone must be able to rebuild the code and get the same key. A native build can't promise that across machines: cargo mixes the host's description (for example `aarch64-apple-darwin`) into each crate's internal ID, and those IDs set the order of functions in the file. A Mac and a Linux server built the same commit into files of equal size with different bytes (14 Nov 2026). So `zk/prover/build.rs` builds the program inside SP1's official v6.10.0 Docker image, pinned by its digest (a hash of the image's exact contents), with locked dependencies, fixed source paths and stripped symbols. `HUGINN_NATIVE_PROGRAM=1` builds natively for quick development only; never deploy that key. `zk/check-program-key.sh` rebuilds a copy elsewhere and compares; run it on two machines and compare the printed hashes.
+- **Program key.** The program key is a hash of the compiled program, and every destination contract pins it, so anyone must be able to rebuild the code and get the same key. A native build can't promise that across machines: cargo mixes the host's description (for example `aarch64-apple-darwin`) into each crate's internal ID, and those IDs set the order of functions in the file. A Mac and a Linux server built the same commit into files of equal size with different bytes (14 Nov 2026). So `zk/prover/build.rs` builds the program inside SP1's official v6.10.0 Docker image, pinned by its digest (a hash of the image's exact contents), with locked dependencies, fixed source paths and stripped symbols. `ZELO_NATIVE_PROGRAM=1` builds natively for quick development only; never deploy that key. `zk/check-program-key.sh` rebuilds a copy elsewhere and compares; run it on two machines and compare the printed hashes.
 - **Untested at scale.** Real multi-signer certificates verified so far come from devnet (20 validators, 4 or 5 signers per certificate, 13 certificates in epoch 1206). Mainnet-size sets (about 670 validators) are tested only with synthetic data.
 - **Stakes are not proven exact.** A set built from RPC uses *live* stake, not the frozen epoch stake certificates are weighted by. `check-set` shows the set verifies real certificates (`stakes_exact: false`), which does not pin stake amounts: thresholds still pass with slightly wrong stakes. Exact stakes need the recorder (see the handover section). On mainnet `fetch validator-set` refuses outright while any member shows 0 live stake.
 - **Dependency advisories.** `sp1-sdk` 6.10 depends on `crypto-bigint` 0.5 (RUSTSEC-2026-0387, timing variation). It is used only on the prover operator's own machine, to sign prover-network requests. It will be upgraded with SP1. `deny.toml` lists every accepted advisory with its reason.
-- **Rogue-key attack.** Huginn relies on Solana's vote program having checked proof of possession for every BLS key.
+- **Rogue-key attack.** Zelo relies on Solana's vote program having checked proof of possession for every BLS key.
 
 ## Validator-set handover (design, not built yet)
 
@@ -37,7 +37,7 @@
 
 **Limit: use it for nothing else.** The overlap rule only shows that the recorder's block was honestly replayed. It must never be used to accept any block as *final*: a notarize aggregate holding 60-79% of stake uses the same signed bytes as a fast-finalize, and counting old stake cannot tell them apart. New members whose stake is not yet known count zero toward the 60%.
 
-**Where the code is.** The light client already has the slot for it: `installProvenSet` and the `IValidatorSetSource` interface in `huginn-evm/src/sources/`. The sources are placeholders; the Rust side will be added when the handover is built.
+**Where the code is.** The light client already has the slot for it: `installProvenSet` and the `IValidatorSetSource` interface in `zelo-evm/src/sources/`. The sources are placeholders; the Rust side will be added when the handover is built.
 
 **Missed epoch.** Each proven set must be certified by the previous one, so if nobody installs epoch N, epoch N+1 cannot be proven and the client refuses that epoch. Recovery is an owner *re-anchor*: a declared trust event that waits a long delay (`reanchorDelay`, 7 days by default), emits its own event, and the guardian can cancel it. Prevent it by running the handover from at least two independent machines and archiving each boundary block's account changes as they happen.
 
@@ -64,7 +64,7 @@
 | 3 | Validator sets and observability | Set membership from `epochVoteAccount`; set fitting replaced by a pass/fail `check-set`; secrets redacted everywhere; transaction records kept per validator set; warmup epochs; the set delay fits within an epoch; on-chain verifier rejects an identity aggregate key and is differential-tested against Rust. |
 | 4–7 | State-proof design (four rounds) and the code built from it (two rounds) | Footer position rule (footer, then the final tick, at the end of the slot); descendant depth against the 20-byte bound; change sets committed as a diff root; one program with tagged claims; the escrow checks the current validator set per epoch; `amountIn` in the order id; only canonical PDAs, so one marker per order. |
 
-The attacks are kept as tests: `crates/alpenglow-core/tests/adversarial.rs`, and `test/CommandAndOwnerAttacks.t.sol` and `test/QueueAndSetAttacks.t.sol` in huginn-evm (`test_FIXED_*` was an attack that now fails, `test_HELD_*` always failed, `test_LIMIT_*` is a documented limit, `test_POC_*` is an open weakness).
+The attacks are kept as tests: `crates/alpenglow-core/tests/adversarial.rs`, and `test/CommandAndOwnerAttacks.t.sol` and `test/QueueAndSetAttacks.t.sol` in zelo-evm (`test_FIXED_*` was an attack that now fails, `test_HELD_*` always failed, `test_LIMIT_*` is a documented limit, `test_POC_*` is an open weakness).
 
 ## Reporting a problem
 

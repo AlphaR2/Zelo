@@ -1,4 +1,4 @@
-# Huginn
+# Zelo
 
 **Prove what happened on Solana to a contract on another chain, using only Solana's own validators.**
 
@@ -20,9 +20,9 @@ There is no bridge committee and no multisig vouching for it. The check is Solan
 
 ## How it works, in five steps
 
-1. **Finality.** Solana's validators sign each block's fingerprint, its `block_id`, and their signatures are merged into one *certificate*. Huginn checks the certificate against the validator set of that epoch.
+1. **Finality.** Solana's validators sign each block's fingerprint, its `block_id`, and their signatures are merged into one *certificate*. Zelo checks the certificate against the validator set of that epoch.
 2. **Inclusion.** A block travels as *shreds*: small packets, each carrying a Merkle path to the `block_id`. Rebuilding the `block_id` from shreds proves they are that block, and so is any transaction inside them. The transaction's signatures are checked too.
-3. **State.** Each block's footer carries its *bank hash*, a fingerprint of all of Solana's accounts after the block. Huginn opens it down to the exact set of accounts the block changed.
+3. **State.** Each block's footer carries its *bank hash*, a fingerprint of all of Solana's accounts after the block. Zelo opens it down to the exact set of accounts the block changed.
 4. **Proof.** Steps 1–3 run inside an [SP1](https://github.com/succinctlabs/sp1) zkVM program. It outputs a short Groth16 proof plus fixed-layout *public values*.
 5. **Verify.** A contract checks the proof, then reads the public values: the block, the transaction, or the change set.
 
@@ -49,7 +49,7 @@ crates/                 the main Rust workspace
   redact/               keeps API keys in RPC URLs out of every printed line
 zk/
   program/              the SP1 program: what a proof proves
-  prover/               the huginn-prover library and `huginn` CLI
+  prover/               the zelo-prover library and `zelo` CLI
 programs/               Solana programs of the order-settlement example (Pinocchio)
   interface/            shared layouts: emitter account, order id, message
   outbox/               leaves messages other chains read through a state proof
@@ -72,7 +72,7 @@ Each folder with its own `Cargo.toml` workspace (`zk/*`, `programs/`, `plugins/f
 | look up a byte layout, constant or pinned version | [`docs/reference.md`](docs/reference.md) |
 | judge the risks | [`docs/security.md`](docs/security.md) |
 
-The EVM side, with contracts and the guided app, lives in [`huginn-evm`](https://github.com/AlphaR2/huginn-evm).
+The EVM side, with contracts and the guided app, lives in [`zelo-evm`](https://github.com/AlphaR2/zelo-evm).
 
 ## License
 

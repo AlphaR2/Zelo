@@ -112,6 +112,16 @@ impl Transaction<'_> {
     }
 }
 
+/// Parses `bytes` as exactly one transaction (every byte used).
+pub fn parse_exact(bytes: &[u8]) -> Result<Transaction<'_>, Error> {
+    let mut r = Reader::new(bytes);
+    let t = parse(&mut r)?;
+    if r.rest() != 0 {
+        return Err(Error::Malformed(r.pos));
+    }
+    Ok(t)
+}
+
 /// Parses one transaction from `r`, leaving `r` just past it.
 pub(crate) fn parse<'a>(r: &mut Reader<'a>) -> Result<Transaction<'a>, Error> {
     let start = r.pos;

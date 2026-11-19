@@ -62,10 +62,10 @@ FinalizeFast signs the *Notarize* payload. BLS hash-to-curve tag: `BLS_SIG_BLS12
 
 **Validator set commitment:**
 ```
-sha256( "huginn-validator-set-v1" | count u32 | for each validator in rank order: bls_pubkey [48] | stake u64 )
+sha256( "zelo-validator-set-v1" | count u32 | for each validator in rank order: bls_pubkey [48] | stake u64 )
 ```
 
-Checked by: `alpenglow-lc/tests/core_matches_agave.rs` (Huginn agrees with Agave on every captured certificate and 400 random ones) and `devnet_genesis.rs` (the real devnet genesis certificate).
+Checked by: `alpenglow-lc/tests/core_matches_agave.rs` (Zelo agrees with Agave on every captured certificate and 400 random ones) and `devnet_genesis.rs` (the real devnet genesis certificate).
 
 ---
 
@@ -117,7 +117,7 @@ The alpentick is one tick entry with `num_hashes == 1`; the footer is the second
 inner     = sha256( parent_bank_hash [32] | signature_count u64 | last_blockhash [32] )
 bank_hash = sha256( inner | accounts_lattice_hash [2048] )
 ```
-Hard-fork slots add a step Huginn does not support (the check fails).
+Hard-fork slots add a step Zelo does not support (the check fails).
 
 **Accounts lattice hash** (SIMD-0215): 1,024 u16 values, added element-wise modulo 2¹⁶.
 ```
@@ -160,8 +160,11 @@ Checked by: `alpenglow-core/examples/check_bank_hash.rs` on a real replayed ledg
 145   claims, each starting with a tag byte:
       tag 1  transaction  u32 component_start_shred | u32 entry_index | u32 tx_index | u16 length | tx bytes
       tag 2  change set   [32] bank_hash of B | [32] diff_root | u32 leaf_count
+      tag 3  summary      u32 component_start_shred | u32 entry_index | u32 tx_index | [64] first signature
+                          | u8 signer count | [32] per signer
+                          | u8 instruction count | per instruction: [32] program id | u16 data length | [32] sha256(data)
 ```
-A transaction claim comes first when both are present. Encoded by `ClaimOutput::encode` (`crates/alpenglow-core/src/proof.rs`) and decoded by `HuginnOutput.sol` in huginn-evm.
+A transaction claim comes first when both are present. A summary (tag 3) replaces the transaction claim when the input asks for it (`ClaimInput::summarize`): the same checks, but the destination gets who signed and a hash of each instruction's data, not the bytes, so the data stays on Solana. Encoded by `ClaimOutput::encode` (`crates/alpenglow-core/src/proof.rs`) and decoded by `ZeloOutput.sol` in zelo-evm.
 
 ---
 

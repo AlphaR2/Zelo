@@ -11,10 +11,10 @@
 # Takes a while: the copy builds the prover in its own target folder.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
-elf=zk/program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/huginn-program
+elf=zk/program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/zelo-program
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-copy="$work/some/other/place/huginn"
+copy="$work/some/other/place/zelo"
 mkdir -p "$copy"
 
 echo "1/3 building the program here ($here)"

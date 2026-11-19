@@ -12,7 +12,7 @@
 //!   - `--locked`: dependency versions come from the committed `zk/program/Cargo.lock`;
 //!   - `--remap-path-prefix`: source paths in panic messages are rewritten to fixed names.
 //!
-//! `HUGINN_NATIVE_PROGRAM=1` builds with the local toolchain instead: faster, no Docker, but the
+//! `ZELO_NATIVE_PROGRAM=1` builds with the local toolchain instead: faster, no Docker, but the
 //! key then depends on the machine. Fine for development; never deploy with it.
 //! `zk/check-program-key.sh` builds a second copy at another path and compares the ELFs.
 
@@ -27,17 +27,17 @@ const SP1_IMAGE_TAG: &str = "v6.10.0";
 const SP1_IMAGE: &str = "ghcr.io/succinctlabs/sp1@sha256:9363a70004271de441e863612c7aefbbc5c36f371f111cd8abb1672fa5ea99f1";
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=HUGINN_NATIVE_PROGRAM");
+    println!("cargo:rerun-if-env-changed=ZELO_NATIVE_PROGRAM");
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let root = manifest
         .join("../..")
         .canonicalize()
-        .expect("huginn checkout root");
-    let native = std::env::var("HUGINN_NATIVE_PROGRAM").is_ok_and(|v| v == "1");
+        .expect("zelo checkout root");
+    let native = std::env::var("ZELO_NATIVE_PROGRAM").is_ok_and(|v| v == "1");
 
     let args = if native {
         println!(
-            "cargo:warning=HUGINN_NATIVE_PROGRAM=1: the program key depends on this machine; don't deploy with it"
+            "cargo:warning=ZELO_NATIVE_PROGRAM=1: the program key depends on this machine; don't deploy with it"
         );
         BuildArgs {
             rustflags: remap_flags(&native_remaps(&root)),
@@ -55,7 +55,7 @@ fn main() {
             // container gets the whole checkout (mounted at /root/program).
             workspace_directory: Some(root.display().to_string()),
             rustflags: remap_flags(&[
-                (PathBuf::from("/root/program"), "/huginn".into()),
+                (PathBuf::from("/root/program"), "/zelo".into()),
                 (PathBuf::from("/root/.cargo"), "/cargo".into()),
             ]),
             locked: true,
@@ -81,7 +81,7 @@ fn native_remaps(root: &Path) -> Vec<(PathBuf, String)> {
         canonical(&cargo_home.join("git/checkouts")),
         "/cargo/git".into(),
     ));
-    remaps.push((root.to_path_buf(), "/huginn".into()));
+    remaps.push((root.to_path_buf(), "/zelo".into()));
     remaps
 }
 

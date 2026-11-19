@@ -1,5 +1,5 @@
 [package]
-name = "huginn-outbox"
+name = "zelo-outbox"
 description = "Lets a wallet or a program leave messages for other chains, provable from a Solana block."
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-huginn-programs.workspace = true
+zelo-programs.workspace = true
 pinocchio.workspace = true
 solana-program-log.workspace = true
 

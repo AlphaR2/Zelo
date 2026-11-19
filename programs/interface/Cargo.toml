@@ -1,5 +1,5 @@
 [package]
-name = "huginn-programs"
+name = "zelo-programs"
 description = "What the outbox and fill programs share with each other and with off-chain code: account layouts, the order id, PDA helpers."
 edition.workspace = true
 license.workspace = true

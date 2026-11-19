@@ -62,6 +62,7 @@ fn fixture_from_shred_files_proves_the_memo_final_and_included() {
         out.finality.signed_stake, out.finality.total_stake,
         "one validator, all stake"
     );
+    // Recorded before the rename to Zelo: the shred files carry the old memo.
     let memo = b"huginn:31337:greeter:offline from shred files";
     assert!(
         out.tx.raw.windows(memo.len()).any(|w| w == memo),

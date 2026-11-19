@@ -1,7 +1,7 @@
 # The Solana programs. Their own workspace: they are compiled for SBF with `cargo build-sbf`.
 #
 #   interface  shared layouts and helpers: account formats, the order id, PDA creation
-#   outbox     leaves messages other chains can read through a Huginn state proof
+#   outbox     leaves messages other chains can read through a Zelo state proof
 #   fill       a solver pays a merchant and leaves a message for the escrow on another chain
 #   tests      runs the compiled programs in Agave's runtime (Mollusk), plus the `shards` tool
 [workspace]
@@ -12,11 +12,11 @@ members = ["interface", "outbox", "fill", "tests"]
 edition = "2024"
 license = "Apache-2.0"
 version = "0.1.0"
-repository = "https://github.com/AlphaR2/huginn"
+repository = "https://github.com/AlphaR2/zelo"
 publish = false
 
 [workspace.dependencies]
-huginn-programs = { path = "interface" }
+zelo-programs = { path = "interface" }
 pinocchio = { version = "0.12", default-features = false, features = ["cpi"] }
 pinocchio-system = "0.7"
 pinocchio-token = "0.8"

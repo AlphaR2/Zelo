@@ -103,16 +103,20 @@ pub enum Error {
     NoClaims,
     #[error("ancestry link: parent slot {parent_slot} is not below slot {slot}")]
     AncestryOrder { slot: u64, parent_slot: u64 },
+    #[error("a summary claim needs a transaction claim")]
+    SummaryWithoutTx,
+    #[error("the transaction has {0} signers or instructions; a summary holds at most 255")]
+    TooManyForSummary(usize),
 }
 
 /// The validator set commitment. A destination chain stores this per epoch.
 ///
-/// `sha256("huginn-validator-set-v1" | count u32 LE | for each, in rank order: bls_pubkey[48] | stake u64 LE)`
+/// `sha256("zelo-validator-set-v1" | count u32 LE | for each, in rank order: bls_pubkey[48] | stake u64 LE)`
 ///
 /// Rank order is part of the commitment, because certificate bitmaps index by rank.
 pub fn validator_set_hash(validators: &[Validator]) -> Hash {
     let mut h = Sha256::new();
-    h.update(b"huginn-validator-set-v1");
+    h.update(b"zelo-validator-set-v1");
     h.update((validators.len() as u32).to_le_bytes());
     for v in validators {
         h.update(&v.bls_pubkey);
@@ -562,6 +566,7 @@ impl TxOutput {
             block_id: self.tx_block_id,
             tx: Some(self.tx.clone()),
             state: None,
+            summary: None,
         }
         .encode()
     }
@@ -579,6 +584,11 @@ pub struct ClaimInput {
     pub tx: Option<TxInclusion>,
     /// "These accounts changed in B, from these values to these values."
     pub state: Option<StateWitness>,
+    /// Show the transaction as a summary (claim tag 3: its signers and a hash of each
+    /// instruction's data) instead of its full bytes (tag 1). The data then stays on Solana:
+    /// the destination receives only its hash.
+    #[serde(default)]
+    pub summarize: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -589,6 +599,69 @@ pub struct ClaimOutput {
     pub block_id: Hash,
     pub tx: Option<IncludedTx>,
     pub state: Option<StateClaim>,
+    /// Set instead of `tx` when the input asked for a summary.
+    pub summary: Option<TxSummary>,
+}
+
+/// What a summary claim shows of a transaction: where it is, its id, who signed it, and for
+/// each instruction its program, data length and `sha256(data)`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxSummary {
+    pub component_start_shred: u32,
+    pub entry_index: u32,
+    pub tx_index: u32,
+    /// The first signature (the transaction's id), 64 bytes.
+    pub signature: Vec<u8>,
+    /// The keys that signed, in the transaction's order (every signature was verified).
+    pub signers: Vec<Hash>,
+    pub instructions: Vec<InstructionSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstructionSummary {
+    pub program_id: Hash,
+    pub data_len: u16,
+    pub data_hash: Hash,
+}
+
+impl TxSummary {
+    /// Summarizes an included transaction. Its bytes were already parsed and its signatures
+    /// verified by [`TxInclusion::verify`].
+    pub fn of(tx: &IncludedTx) -> Result<TxSummary, Error> {
+        let mut r = block::Reader::new(&tx.raw);
+        let parsed = tx::parse(&mut r).map_err(block::Error::from)?;
+        let signers = parsed.signers().to_vec();
+        if signers.len() > 255 {
+            return Err(Error::TooManyForSummary(signers.len()));
+        }
+        if parsed.instructions.len() > 255 {
+            return Err(Error::TooManyForSummary(parsed.instructions.len()));
+        }
+        let instructions =
+            parsed
+                .instructions
+                .iter()
+                .map(|ix| {
+                    Ok(InstructionSummary {
+                        // Program ids are always static keys; parse checked the index.
+                        program_id: *parsed.program_id(ix).ok_or(Error::Block(
+                            block::Error::from(tx::Error::Invalid("program id index")),
+                        ))?,
+                        // A transaction is at most 1,232 bytes, so any data length fits.
+                        data_len: ix.data.len() as u16,
+                        data_hash: Sha256::digest(ix.data).into(),
+                    })
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+        Ok(TxSummary {
+            component_start_shred: tx.component_start_shred,
+            entry_index: tx.entry_index,
+            tx_index: tx.tx_index,
+            signature: parsed.signatures.first().map_or(Vec::new(), |s| s.to_vec()),
+            signers,
+            instructions,
+        })
+    }
 }
 
 impl ClaimInput {
@@ -602,6 +675,9 @@ impl ClaimInput {
     pub fn verify_block(&self, finality: Finality) -> Result<ClaimOutput, Error> {
         if self.tx.is_none() && self.state.is_none() {
             return Err(Error::NoClaims);
+        }
+        if self.summarize && self.tx.is_none() {
+            return Err(Error::SummaryWithoutTx);
         }
         let path = ancestry_path(finality.slot, &finality.block_id, &self.ancestry)?;
         let (slot, block_id) = *path.last().expect("path");
@@ -624,22 +700,31 @@ impl ClaimInput {
             )?),
             None => None,
         };
+        let (tx, summary) = match tx {
+            Some(t) if self.summarize => (None, Some(TxSummary::of(&t)?)),
+            t => (t, None),
+        };
         Ok(ClaimOutput {
             finality,
             slot,
             block_id,
             tx,
             state,
+            summary,
         })
     }
 }
 
 impl ClaimOutput {
     /// Public values, version 2 (layout on [`TxOutput::encode`]): the header, then each claim
-    /// with its tag. Claim 1 is a transaction, claim 2 is a change set:
+    /// with its tag. Claim 1 is a transaction, claim 2 is a change set, claim 3 is a
+    /// transaction summary (in place of claim 1):
     ///
     /// ```text
     /// tag 2  [32] bank_hash of B | [32] diff_root | u32 leaf_count
+    /// tag 3  u32 component_start_shred | u32 entry_index | u32 tx_index | [64] first signature
+    ///        | u8 signer count | [32] per signer
+    ///        | u8 instruction count | per instruction: [32] program id | u16 data length | [32] sha256(data)
     /// ```
     pub fn encode(&self) -> Vec<u8> {
         let f = &self.finality;
@@ -663,7 +748,11 @@ impl ClaimOutput {
         out.extend_from_slice(&n.to_be_bytes());
         out.extend_from_slice(&windows.to_be_bytes());
         out.extend_from_slice(&top.to_be_bytes());
-        out.push(u8::from(self.tx.is_some()) + u8::from(self.state.is_some()));
+        out.push(
+            u8::from(self.tx.is_some())
+                + u8::from(self.summary.is_some())
+                + u8::from(self.state.is_some()),
+        );
         if let Some(tx) = &self.tx {
             out.push(1);
             out.extend_from_slice(&tx.component_start_shred.to_be_bytes());
@@ -671,6 +760,23 @@ impl ClaimOutput {
             out.extend_from_slice(&tx.tx_index.to_be_bytes());
             out.extend_from_slice(&(tx.raw.len() as u16).to_be_bytes());
             out.extend_from_slice(&tx.raw);
+        }
+        if let Some(t) = &self.summary {
+            out.push(3);
+            out.extend_from_slice(&t.component_start_shred.to_be_bytes());
+            out.extend_from_slice(&t.entry_index.to_be_bytes());
+            out.extend_from_slice(&t.tx_index.to_be_bytes());
+            out.extend_from_slice(&t.signature);
+            out.push(t.signers.len() as u8);
+            for k in &t.signers {
+                out.extend_from_slice(k);
+            }
+            out.push(t.instructions.len() as u8);
+            for ix in &t.instructions {
+                out.extend_from_slice(&ix.program_id);
+                out.extend_from_slice(&ix.data_len.to_be_bytes());
+                out.extend_from_slice(&ix.data_hash);
+            }
         }
         if let Some(s) = &self.state {
             out.push(2);

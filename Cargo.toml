@@ -20,7 +20,7 @@ members = [
 edition = "2024"
 license = "Apache-2.0"
 version = "0.1.0"
-repository = "https://github.com/AlphaR2/huginn"
+repository = "https://github.com/AlphaR2/zelo"
 
 [workspace.dependencies]
 # Internal crates

@@ -1,4 +1,4 @@
-# Huginn codebase guide
+# Zelo codebase guide
 
 Every folder, in the order it appears in the repo: what it does, which functions to read first, and which tests show it works. The ideas behind the code are in [`how-it-works.md`](how-it-works.md); byte layouts are in [`reference.md`](reference.md).
 
@@ -95,9 +95,9 @@ The same checks done with **Agave's own crates**, the yardstick for `alpenglow-c
 |---|---|
 | `src/validator_set.rs` | Agave's ranking rules (drop zero-stake and duplicated keys, sort by stake then key), plus `commitment()`. |
 | `src/cert.rs` | Calls Agave's `verify_certificate` on genesis and footer certificates. |
-| `examples/find_genesis_signers.rs` | Finds which of today's validators signed the devnet genesis certificate. It was the first proof that Huginn's vote encoding is right. |
+| `examples/find_genesis_signers.rs` | Finds which of today's validators signed the devnet genesis certificate. It was the first proof that Zelo's vote encoding is right. |
 | `tests/core_matches_agave.rs` | **The most important test file.** `alpenglow-core` and Agave must agree on vote bytes, real certificates and 400 random valid or tampered ones. |
-| `tests/tx_matches_agave.rs` | 300,000 random and mutated transactions: Huginn's parser and Agave's agree on every one. |
+| `tests/tx_matches_agave.rs` | 300,000 random and mutated transactions: Zelo's parser and Agave's agree on every one. |
 | `tests/devnet_genesis.rs`, `local_footers.rs`, `local_block.rs` | Real certificates and blocks, with tamper tests. |
 
 ---
@@ -139,11 +139,11 @@ An optional Geyser plugin (a library the validator loads) that writes each block
 ### `zk/program`
 `src/main.rs` reads a `ClaimInput`, verifies the certificate and then the claims, and commits `ClaimOutput::encode()` as the public values. Any failed check panics, and then no proof can exist. `Cargo.toml` patches `bls12_381` and `sha2` to SP1's accelerated versions. The committed `Cargo.lock` and stripped symbols keep the program key reproducible.
 
-### `zk/prover` (crate `huginn-prover`, CLI `huginn`)
+### `zk/prover` (crate `zelo-prover`, CLI `zelo`)
 - `build.rs` builds the program inside SP1's Docker image, pinned by digest, so every machine produces the same bytes and the same program key.
 - `src/lib.rs` is what destination apps use:
   - `tx_input_from_block_file`;
-  - `Huginn::from_env` (local CPU, mock, or Succinct's network with the `network` feature);
+  - `Zelo::from_env` (local CPU, mock, or Succinct's network with the `network` feature);
   - `execute`, which counts cycles without proving;
   - `prove`. Every proof is verified, and must match native Rust, before it is returned.
 - `src/main.rs` runs the real local transaction, synthetic validator sets (`--synthetic`, `--slow`) or a state claim (`--state`). With `--prove core|compressed|groth16`, it writes `fixtures/proofs/<run>.<mode>.json`.
@@ -158,9 +158,9 @@ A workspace of its own, built for SBF with `cargo build-sbf` (Solana's program f
 
 | Crate | What it is |
 |---|---|
-| `interface` (`huginn-programs`) | What the programs share with each other and with off-chain code. `outbox`: emitter account layout, `next_chain`, `append`. `fill`: `Order` (parse, encode, `id`, `payload`), `token_account_owner`. `pda`: `check_canonical` (refuse non-canonical bumps) and `create_pda` (works even if someone pre-funded the address). |
+| `interface` (`zelo-programs`) | What the programs share with each other and with off-chain code. `outbox`: emitter account layout, `next_chain`, `append`. `fill`: `Order` (parse, encode, `id`, `payload`), `token_account_owner`. `pda`: `check_canonical` (refuse non-canonical bumps) and `create_pda` (works even if someone pre-funded the address). |
 | `outbox` | `emit`: appends a message to the sender's emitter account, creating it at the canonical address the first time. |
-| `fill` | Pays the merchant (`TransferChecked`), creates the "filled" marker, and emits the order's message from a shard PDA. The outbox id is fixed at build time (`HUGINN_OUTBOX_ID`). |
+| `fill` | Pays the merchant (`TransferChecked`), creates the "filled" marker, and emits the order's message from a shard PDA. The outbox id is fixed at build time (`ZELO_OUTBOX_ID`). |
 | `tests` | Mollusk tests: the compiled `.so` files in Agave's runtime with the real SPL Token program. The `shards` tool prints the escrow's shard list; the `live` example fills real orders on a local validator and checks the results. |
 
 **Tests:**

@@ -1,4 +1,4 @@
-# Running Huginn
+# Running Zelo
 
 1. [Tools](#1-tools): what to install, once.
 2. [Local](#2-local): tests, the local Alpenglow validator, the full flow on a laptop.
@@ -17,26 +17,26 @@
 | Docker | builds the SP1 program in SP1's pinned image, so its program key is the same on every machine | Docker Desktop (Ubuntu: `apt install docker.io`, then add your user to the `docker` group) |
 | protoc | SP1 builds | `brew install protobuf` (Ubuntu: `apt install protobuf-compiler`) |
 | Solana CLI, Agave 4.4.1 | the local Alpenglow validator; `cargo build-sbf` for the programs | `sh -c "$(curl -sSfL https://release.anza.xyz/v4.4.1/install)"` |
-| Foundry | contracts and anvil (huginn-evm) | `curl -L https://foundry.paradigm.xyz \| bash`, then `foundryup` |
+| Foundry | contracts and anvil (zelo-evm) | `curl -L https://foundry.paradigm.xyz \| bash`, then `foundryup` |
 
 Open a new terminal afterwards, so the new `PATH` entries apply.
 
-`HUGINN_NATIVE_PROGRAM=1` builds the SP1 program without Docker, which is faster for development. That program key depends on your machine, so **never deploy it**.
+`ZELO_NATIVE_PROGRAM=1` builds the SP1 program without Docker, which is faster for development. That program key depends on your machine, so **never deploy it**.
 
 ---
-
+`
 ## 2. Local
 
-**Clone both repos next to each other.** huginn-evm's app finds huginn at `../huginn`:
+**Clone both repos next to each other.** zelo-evm's app finds zelo at `../zelo`:
 
 ```bash
-git clone https://github.com/AlphaR2/huginn
+git clone https://github.com/AlphaR2/zelo
 ```
 ```bash
-git clone --recursive https://github.com/AlphaR2/huginn-evm
+git clone --recursive https://github.com/AlphaR2/zelo-evm
 ```
 
-**Run the tests** in `huginn`. They use only committed fixtures (real blocks), with no validator or network:
+**Run the tests** in `zelo`. They use only committed fixtures (real blocks), with no validator or network:
 
 ```bash
 cargo test --release
@@ -62,13 +62,13 @@ solana-test-validator --alpenglow --ledger .local-ledger
 
 Certificates are read from the blocks' own shreds, so the footer-dump plugin is not needed. Add `--geyser-plugin-config plugins/footer-dump/config.json` only to compare against it.
 
-**The whole flow** (send a transaction, wait for finality, fetch its shreds, prove, verify on a local EVM chain) runs from huginn-evm's app. See huginn-evm's `README.md` and `docs/demo.md`.
+**The whole flow** (send a transaction, wait for finality, fetch its shreds, prove, verify on a local EVM chain) runs from zelo-evm's app. See zelo-evm's `README.md` and `docs/demo.md`.
 
 ### The data tools, one by one
 
 The app runs these for you. Run them by hand to look at each step.
 
-| Step | Command (from `huginn`) |
+| Step | Command (from `zelo`) |
 |---|---|
 | The cluster's shred version | `cargo run -p fetch -- cluster-info --cluster local` |
 | The epoch's validator set | `cargo run -p fetch -- validator-set --cluster local` |
@@ -82,13 +82,13 @@ A fresh validator is a new chain, with a new shred version and a new validator s
 
 ## 3. The Solana programs
 
-The outbox and fill programs are in `programs/`, a workspace of their own, and are built for SBF (Solana's program format, version 3). The fill program trusts exactly one outbox, whose id is fixed at build time through `HUGINN_OUTBOX_ID`.
+The outbox and fill programs are in `programs/`, a workspace of their own, and are built for SBF (Solana's program format, version 3). The fill program trusts exactly one outbox, whose id is fixed at build time through `ZELO_OUTBOX_ID`.
 
 **Build and test.** For tests, any outbox id works. This one is 32 bytes of `0x0b`:
 
 ```bash
 cd programs
-export HUGINN_OUTBOX_ID=k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn
+export ZELO_OUTBOX_ID=k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn
 cargo build-sbf
 cargo test
 ```
@@ -99,27 +99,33 @@ cargo test
 
 1. Build and deploy the outbox. Note the printed `Program Id`:
    ```bash
-   cargo build-sbf && solana program deploy target/deploy/huginn_outbox.so -u localhost
+   cargo build-sbf && solana program deploy target/deploy/zelo_outbox.so -u localhost
    ```
 2. Rebuild with the real outbox id, then deploy the fill program:
    ```bash
-   HUGINN_OUTBOX_ID=<outbox id> cargo build-sbf && solana program deploy target/deploy/huginn_fill.so -u localhost
+   ZELO_OUTBOX_ID=<outbox id> cargo build-sbf && solana program deploy target/deploy/zelo_fill.so -u localhost
    ```
 3. Print the 16 shard accounts the escrow on Base needs:
    ```bash
-   HUGINN_OUTBOX_ID=<outbox id> cargo run --bin shards -- <fill id>
+   ZELO_OUTBOX_ID=<outbox id> cargo run --bin shards -- <fill id>
    ```
 
 4. Check the deployed programs with real transactions. The `live` example uses fresh keys funded by the local faucet, and only runs against this machine.
    - `check` fills an order, tries to fill it again, and fills two orders in one block, checking balances, the marker and the emitter account's hash chain:
      ```bash
-     HUGINN_OUTBOX_ID=<outbox id> cargo run --example live -- <fill id> check
+     ZELO_OUTBOX_ID=<outbox id> cargo run --example live -- <fill id> check
      ```
-   - `setup` and `fill` fill an order placed on an EVM chain (huginn-evm's `Orders.s.sol place()`, then `fill <order.json> <solver EVM address>`). The order-settlement run is described in huginn-evm's `docs/deploy.md`.
+   - `setup` and `fill` fill an order placed on an EVM chain (zelo-evm's `Orders.s.sol place()`, then `fill <order.json> <solver EVM address>`). The order-settlement run is described in zelo-evm's `docs/deploy.md`.
 
 ### Proving a fill's block (state witness)
 
-Stop the validator first: `agave-ledger-tool` cannot read a ledger in use. For the fill's slot `S`, replay `S-1` to `S+2` from genesis. The validator's unpacked snapshot folder overrides `--no-snapshot`, so point `--snapshots` at an empty folder:
+**Before the fill, keep a snapshot.** A snapshot is a saved copy of every account at one slot. `solana-test-validator` keeps only its last two snapshots and about 5,500 recent slots, so after a while neither genesis nor any snapshot before the fill is left to replay from. Copy the newest archive aside first:
+
+```bash
+mkdir -p <work>/snap && cp "$(ls -t .local-ledger/snapshot-*.tar.zst | head -1)" <work>/snap/
+```
+
+Stop the validator after the fill: `agave-ledger-tool` cannot read a ledger in use. For the fill's slot `S`, replay `S-1` to `S+2` from that snapshot by passing `--snapshots <work>/snap` in place of `--no-snapshot --snapshots <empty dir>` below (that form replays from genesis, which only works on a young chain). The validator's unpacked snapshot folder overrides `--no-snapshot`, so point `--snapshots` at an empty folder:
 
 ```bash
 mkdir -p /tmp/nosnap && for s in S-1 S S+1 S+2; do agave-ledger-tool -l .local-ledger verify --no-snapshot --snapshots /tmp/nosnap --halt-at-slot $s --write-bank-file; agave-ledger-tool -l .local-ledger accounts --no-snapshot --snapshots /tmp/nosnap --halt-at-slot $s --include-sysvars --encoding base64 > <work>/accounts_$s.out; done
@@ -165,7 +171,7 @@ Groth16 is the small proof format EVM contracts check. Making one locally needs 
 
 ### On Succinct's prover network (recommended)
 
-huginn-evm's app does this with `--mode groth16` and the `network` feature. It reads the prover account key only from the `NETWORK_PRIVATE_KEY` environment variable, and never prints it. Proving costs PROVE tokens. On 14 Nov 2026 a devnet transaction took 53 seconds.
+zelo-evm's app does this with `--mode groth16` and the `network` feature. It reads the prover account key only from the `NETWORK_PRIVATE_KEY` environment variable, and never prints it. Proving costs PROVE tokens. On 14 Nov 2026 a devnet transaction took 53 seconds.
 
 ### On a rented machine
 
@@ -179,18 +185,18 @@ huginn-evm's app does this with `--mode groth16` and the `network` feature. It r
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env && curl -L https://sp1up.succinct.xyz | bash && source ~/.bashrc && sp1up --version v6.10.0
    ```
-3. Get the code, either by cloning huginn, or from your laptop:
+3. Get the code, either by cloning zelo, or from your laptop:
    ```bash
-   rsync -az --exclude target --exclude .local-ledger huginn/ root@<vps-ip>:huginn/
+   rsync -az --exclude target --exclude .local-ledger zelo/ root@<vps-ip>:zelo/
    ```
 4. Prove. On first use SP1 downloads about 6 GB of circuit files:
    ```bash
-   cd huginn/zk/prover && cargo run --release -- --prove groth16
+   cd zelo/zk/prover && cargo run --release -- --prove groth16
    ```
    It ends with a line naming the proof file in `fixtures/proofs/`.
 5. Copy the proof file back:
    ```bash
-   scp root@<vps-ip>:huginn/fixtures/proofs/<file>.json huginn/fixtures/proofs/
+   scp root@<vps-ip>:zelo/fixtures/proofs/<file>.json zelo/fixtures/proofs/
    ```
 6. Delete the machine.
 
@@ -203,7 +209,7 @@ huginn-evm's app does this with `--mode groth16` and the `network` feature. It r
 pkill -f solana-test-validator; pkill anvil
 ```
 
-**Build outputs** (about 10 GB for huginn):
+**Build outputs** (about 10 GB for zelo):
 ```bash
 cargo clean && (cd zk/prover && cargo clean) && (cd zk/program && cargo clean) && (cd programs && cargo clean)
 ```
