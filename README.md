@@ -9,7 +9,7 @@ A contract on Base (or any EVM chain) can check, by itself:
 There is no bridge committee and no multisig vouching for it. The check is Solana's own validator signatures, verified inside a zero-knowledge program, so the destination contract only checks one small proof.
 
 > **Status: experimental. Do not put value behind it.**
-> - **Transaction proofs work end to end.** On 14 Nov 2026 a real devnet transaction was proven on Succinct's prover network and accepted by a light client on Base Sepolia (one Groth16 proof, about 388k gas to submit).
+> - **Transaction proofs work end to end.** Devnet transactions have been proven on Succinct's prover network and accepted by a light client on Base Sepolia (one Groth16 proof, about 388k gas to submit).
 > - **Built and tested, not yet on a real chain:**
 >   - proofs for blocks that never got their own certificate;
 >   - signature checks inside the proof;

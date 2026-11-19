@@ -1,12 +1,6 @@
 //! Builds the SP1 program (`zk/program`) so that its ELF, and therefore the program key every
 //! destination contract pins, is the same on every machine.
 //!
-//! **Default: SP1's official Docker image, pinned by digest.** A native build is not enough:
-//! cargo mixes the host's compiler description (`rustc -vV`, which names the host, e.g.
-//! `aarch64-apple-darwin`) into every crate's hash. Those hashes decide the order in which
-//! functions and constants are laid out, so a Mac and a Linux server produce the same code in a
-//! different order: same size, different bytes, different program key (seen 14 Nov 2026).
-//! Inside one pinned linux/amd64 image, every machine runs the same compiler on the same host.
 //!
 //! Also, in both modes:
 //!   - `--locked`: dependency versions come from the committed `zk/program/Cargo.lock`;

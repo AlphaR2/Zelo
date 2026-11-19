@@ -14,7 +14,10 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-# The versions in Agave 4.4.x's Cargo.toml. These types cross into the validator.
+# Exactly what Agave v4.4.1 (the validator these tests run on) depends on, checked against its
+# Cargo.toml: these types cross into the validator's own process, so a plugin built with any other
+# version won't load. Newer releases belong to newer validators (Agave 4.5 uses interface 6.0.0),
+# so move all of this, the toolchain and `solana-cli` together, never one crate alone.
 agave-geyser-plugin-interface = "=5.0.0"
 solana-bls-signatures = "=4.0.0"
 solana-clock = "=4.0.0"
